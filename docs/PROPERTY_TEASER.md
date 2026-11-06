@@ -41,6 +41,13 @@ Design presentation decks and teaser trailers for a property, then export them f
 
 Fonts are drawn into the PDF, the Word slide images and the video. PowerPoint uses the font if it is installed, otherwise a similar font.
 
+## Saved designs: same look, different property
+
+- **Save design** (editor top bar) stores the project without its property details: slides, layout, colours, fonts, logo and contact stay. Texts bound to details (name, price, photos, amenities…) switch with the property. If a text you typed by hand mentions this property, you are warned, because it will not switch.
+- Saved designs appear first under **Templates → My designs** in the editor, in the template gallery, in Deal Desk's "/" Property Teaser and in the intake card's Design list.
+- **Use for listings…** (Property Teaser home → My designs): pick up to 20 listings; each gets its own project named "Listing · Design". Add photos to each before exporting (listings have no photos).
+- Code: `lib/teaser/listing.ts` (`propertyFromListing`, `toDesign`, `fromDesign`, `stuckTexts`), `components/teaser/designs.tsx`, table `teaser_templates` (migration 0008), drivers `teaser.templates`, `teaser.getTemplate`, `teaser.saveTemplate`, `teaser.deleteTemplate`.
+
 ## How it fits together
 
 ```text

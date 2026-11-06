@@ -22,7 +22,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppFrame } from "@/components/apps/app-frame";
-import { CommandPanel, useCommandMenu, type DeskContext, type Opt } from "@/components/apps/command-menu";
+import { AddKeyDialog } from "@/components/apps/add-key-dialog";
+import { CommandPanel, useCommandMenu, type DeskContext, type IntakeSpec, type Opt } from "@/components/apps/command-menu";
+import { TeaserIntake } from "@/components/apps/teaser-intake";
 import { ACCEPT, extractDocument } from "@/components/apps/doc-extract";
 import { Markdown } from "@/components/apps/markdown";
 import { predict } from "@/components/apps/predict";
@@ -37,6 +39,8 @@ interface Msg {
   turn?: ChatTurn;
   /** Follow-up chips for local notices (e.g. after an upload). */
   suggestions?: string[];
+  /** A Property Teaser intake card ("/" → Property Teaser). */
+  intake?: IntakeSpec;
 }
 
 /** Start cards: each opens a "/" command flow. */
@@ -178,6 +182,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
   const [showDocs, setShowDocs] = useState(false);
   const [reading, setReading] = useState<{ name: string; label: string; pct?: number } | null>(null);
   const [recentAsks, setRecentAsks] = useState<string[]>([]);
+  const [addKey, setAddKey] = useState(false);
   const [places, setPlaces] = useState<string[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -203,6 +208,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
   const menu = useCommandMenu(grid, ctx, {
     send: (t) => sendRef.current(t),
     open: (app, args) => grid.ui.openApp(app, args),
+    intake: (spec) => setMsgs((m) => [...m, { id: mid(), role: "assistant", content: "", intake: spec }]),
     fill: (t) => {
       setInput(t);
       requestAnimationFrame(() => boxRef.current?.focus());
@@ -431,17 +437,21 @@ function DealDesk({ grid }: { grid: GridSDK }) {
             id="provider"
             value={provider}
             onChange={(e) => {
+              if (e.target.value === "__add") {
+                setAddKey(true);
+                return;
+              }
               setProvider(e.target.value);
               grid.kv.set("provider", e.target.value).catch(() => {});
             }}
-            className="field h-8 w-auto rounded-full py-0 text-xs"
+            className="field h-8 w-auto max-w-56 rounded-full py-0 text-xs"
           >
             {providers.map((p) => (
               <option key={p.id} value={p.id} disabled={!p.configured}>
                 {p.label}
-                {p.configured ? "" : " (no key)"}
               </option>
             ))}
+            <option value="__add">＋ Add key…</option>
           </select>
           {!engine && (
             <>
@@ -561,9 +571,13 @@ function DealDesk({ grid }: { grid: GridSDK }) {
             </div>
           ) : (
             <div className="mx-auto max-w-3xl space-y-4">
-              {msgs.map((m) => (
-                <Turn key={m.id} m={m} onSave={save} onAsk={send} />
-              ))}
+              {msgs.map((m) =>
+                m.intake ? (
+                  <TeaserIntake key={m.id} grid={grid} spec={m.intake} onClose={() => setMsgs((ms) => ms.filter((x) => x.id !== m.id))} />
+                ) : (
+                  <Turn key={m.id} m={m} onSave={save} onAsk={send} />
+                ),
+              )}
               {busy && <Thinking engine={engine} />}
               <div ref={endRef} />
             </div>
@@ -678,6 +692,20 @@ function DealDesk({ grid }: { grid: GridSDK }) {
           )}
         </div>
       </form>
+      {addKey && (
+        <AddKeyDialog
+          grid={grid}
+          onClose={() => setAddKey(false)}
+          onAdded={async (k) => {
+            setAddKey(false);
+            const list = await grid.ai.providers().catch(() => providers);
+            setProviders(list);
+            setProvider(`mine:${k.id}`);
+            grid.kv.set("provider", `mine:${k.id}`).catch(() => {});
+            grid.ui.notify(`${k.name} added and selected. Switch back to the Query Engine any time.`, { tone: "ok" });
+          }}
+        />
+      )}
     </div>
   );
 }

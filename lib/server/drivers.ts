@@ -13,6 +13,11 @@ import { runAs } from "@/lib/db/client";
 import { denied, DriverError, invalid } from "./errors";
 import * as ai from "./services/ai";
 import * as aiKeys from "./services/ai-keys";
+
+/** AI keys are managed only from GRID's own apps (Deal Desk, Settings), never by third-party apps. */
+function builtinOnly(a: Actor) {
+  if (a.app.kind !== "builtin") throw new DriverError("permission_denied", "Only GRID's own apps can manage AI keys.", 403);
+}
 import * as appsSvc from "./services/apps";
 import * as auth from "./services/auth";
 import * as fs from "./services/fs";
@@ -57,16 +62,17 @@ export const METHODS = {
   "kv.list": m({ schema: z.object({ prefix: z.string().max(200).optional() }), run: (a, x) => kvSvc.kvList(a.user.id, a.app.id, x.prefix) }),
 
   "ai.chat": m({
-    schema: z.object({ message: z.string(), sessionId: z.string().max(100).optional(), provider: z.string().max(20).optional(), tier: z.enum(["balanced", "budget"]).optional() }),
+    schema: z.object({ message: z.string(), sessionId: z.string().max(100).optional(), provider: z.string().max(60).optional(), tier: z.enum(["balanced", "budget"]).optional() }),
     run: (a, x) => ai.chat(a.user.id, a.app.id, x),
   }),
   "ai.providers": m({ schema: none, run: (a) => ai.providerList(a.user.id) }),
   "ai.status": m({ schema: none, run: (a) => ai.aiStatus(a.user.id) }),
   // Your own AI keys (Settings). Keys go in, never come back out.
-  "ai.keys.list": m({ schema: none, run: (a) => aiKeys.listKeys(a.user.id) }),
-  "ai.keys.save": m({ kind: "command", schema: aiKeys.keyInput, run: (a, x) => aiKeys.saveKey(a.user.id, x) }),
-  "ai.keys.remove": m({ kind: "command", schema: z.object({ provider: z.string().max(40) }), run: (a, x) => aiKeys.removeKey(a.user.id, x.provider) }),
-  "ai.keys.test": m({ kind: "query", schema: aiKeys.keyInput, run: (a, x) => aiKeys.testKey(a.user.id, x) }),
+  "ai.keys.list": m({ schema: none, run: (a) => (builtinOnly(a), aiKeys.listKeys(a.user.id)) }),
+  "ai.keys.save": m({ kind: "command", schema: aiKeys.keyInput, run: (a, x) => (builtinOnly(a), aiKeys.saveKey(a.user.id, x)) }),
+  "ai.keys.remove": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => (builtinOnly(a), aiKeys.removeKey(a.user.id, x.id)) }),
+  "ai.keys.presets": m({ schema: none, run: () => aiKeys.keyPresets() }),
+  "ai.keys.test": m({ kind: "query", schema: aiKeys.keyInput, run: (a, x) => (builtinOnly(a), aiKeys.testKey(a.user.id, x)) }),
   "ai.sessions": m({ schema: none, run: (a) => ai.listSessions(a.user.id, a.app.id) }),
   "ai.session": m({ schema: z.object({ sessionId: z.string() }), run: (a, x) => ai.getSession(a.user.id, a.app.id, x.sessionId) }),
   "ai.deleteSession": m({ schema: z.object({ sessionId: z.string() }), run: (a, x) => ai.deleteSession(a.user.id, a.app.id, x.sessionId) }),
@@ -95,6 +101,10 @@ export const METHODS = {
   "teaser.save": m({ kind: "command", schema: teaserSvc.teaserInput, run: (a, x) => teaserSvc.saveTeaser(a.user.id, x) }),
   "teaser.delete": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => teaserSvc.deleteTeaser(a.user.id, x.id) }),
   "teaser.duplicate": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => teaserSvc.duplicateTeaser(a.user.id, x.id) }),
+  "teaser.templates": m({ schema: none, run: (a) => teaserSvc.listTemplates(a.user.id) }),
+  "teaser.getTemplate": m({ schema: z.object({ id: z.string().uuid() }), run: (a, x) => teaserSvc.getTemplate(a.user.id, x.id) }),
+  "teaser.saveTemplate": m({ kind: "command", schema: teaserSvc.templateInput, run: (a, x) => teaserSvc.saveTemplate(a.user.id, x) }),
+  "teaser.deleteTemplate": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => teaserSvc.deleteTemplate(a.user.id, x.id) }),
   "teaser.assets": m({ schema: z.object({ source: z.enum(["upload", "logo", "web"]).optional() }), run: (a, x) => teaserSvc.listAssets(a.user.id, x.source) }),
   "teaser.addAsset": m({ kind: "command", schema: teaserSvc.assetInput, run: (a, x) => teaserSvc.addAsset(a.user.id, x) }),
   "teaser.deleteAsset": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => teaserSvc.deleteAsset(a.user.id, x.id) }),

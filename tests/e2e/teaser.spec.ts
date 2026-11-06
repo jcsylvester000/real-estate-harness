@@ -33,6 +33,9 @@ test("Property Teaser: template, details written for you, photos, logo, edit, ex
   await tz.getByRole("button", { name: "Apply all" }).click();
   await expect(tz.getByLabel("Lot sqm")).toHaveValue("450");
   await expect(tz.getByRole("button", { name: "Swimming pool" })).toHaveAttribute("aria-pressed", "true");
+  // Contact details may already be filled from your last project (collapsed then).
+  const contact = tz.getByRole("button", { name: "Your contact details" });
+  if ((await contact.getAttribute("aria-expanded")) === "false") await contact.click();
   await tz.getByLabel("Name", { exact: true }).fill("Maria Santos");
   await expect(tz.getByLabel("Project title")).toHaveValue("Casa Verde Alabang");
 

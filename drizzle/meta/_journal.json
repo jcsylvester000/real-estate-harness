@@ -50,6 +50,20 @@
       "when": 1793955457561,
       "tag": "0006_teasers",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793963325080,
+      "tag": "0007_ai_keys_named",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793963788792,
+      "tag": "0008_teaser_templates",
+      "breakpoints": true
     }
   ]
 }

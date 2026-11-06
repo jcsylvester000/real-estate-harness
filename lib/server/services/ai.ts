@@ -105,9 +105,11 @@ export async function providerList(userId?: string): Promise<ProviderOption[]> {
   if (cfg.demoEnabled) out.push({ id: "demo", label: "Query Engine (no AI)", configured: true, models: cfg.providers.demo.models, isDefault: true, source: "engine" });
   if (userId)
     for (const k of await listKeys(userId))
-      out.push({ id: `${MINE}${k.provider}`, label: `My key · ${k.label.replace(/ \(.*\)$/, "")}`, configured: true, models: { balanced: k.model, budget: k.budgetModel || k.model }, isDefault: false, source: "mine" });
+      out.push({ id: `${MINE}${k.id}`, label: k.name, configured: true, models: { balanced: k.model, budget: k.budgetModel || k.model }, isDefault: false, source: "mine" });
+  // Server-wide keys are hidden unless an admin opts in: people add their own AI with "Add key…".
+  const showTeam = process.env.GRID_SHOW_TEAM_KEYS === "true";
   for (const id of ["anthropic", "openai", "gemini"] as const) {
-    if (!cfg.providers[id].apiKey) continue;
+    if (!showTeam || !cfg.providers[id].apiKey) continue;
     out.push({ id, label: `Team key · ${{ anthropic: "Claude", openai: cfg.openaiLabel, gemini: "Gemini" }[id]}`, configured: true, models: cfg.providers[id].models, isDefault: false, source: "team" });
   }
   if (!cfg.demoEnabled && out[0]) out[0].isDefault = true;
@@ -121,7 +123,7 @@ async function pickProvider(userId: string, requested?: string) {
   const p = list.find((x) => x.id === id);
   if (!p) {
     if (requested?.startsWith(MINE) || ["anthropic", "openai", "gemini"].includes(requested ?? ""))
-      throw new DriverError("provider_not_configured", "That AI key is not set up. Add your key in Settings → AI setup, or use the Query Engine.", 400);
+      throw new DriverError("provider_not_configured", "That AI is not set up. Use Add key… in Deal Desk's AI menu, or the Query Engine.", 400);
     if (requested) throw invalid(`Unknown AI provider "${requested}".`);
     throw new DriverError("provider_not_configured", "No AI provider is set up. Add your own key in Settings → AI setup.", 400);
   }
@@ -162,7 +164,7 @@ export async function chat(userId: string, appId: string, input: ChatInput): Pro
   let provider;
   if (picked.source === "mine") {
     const k = await resolveKey(userId, providerId.slice(MINE.length));
-    if (!k) throw new DriverError("provider_not_configured", "Your saved key could not be read. Enter it again in Settings → AI setup.", 400);
+    if (!k) throw new DriverError("provider_not_configured", "This AI key could not be read. Remove it and add it again with Add key…", 400);
     provider = createProvider(k.engine, k.settings, tier, undefined, { timeoutMs: cfg.limits.providerTimeoutMs, retries: 1 });
   } else {
     const id = providerId as Exclude<ProviderId, "demo">;

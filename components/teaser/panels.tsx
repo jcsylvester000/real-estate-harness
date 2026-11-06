@@ -10,7 +10,8 @@ import type { ImageCache } from "@/lib/teaser/render";
 import { DECK_TEMPLATES, TRAILER_TEMPLATES, newDoc, type Template } from "@/lib/teaser/templates";
 import { uid, type El, type ShapeKind, type TeaserDoc } from "@/lib/teaser/types";
 import { KINDS } from "@/lib/listings/kinds";
-import type { GridSDK, TeaserAsset, WebImage } from "@/lib/sdk/types";
+import type { GridSDK, SavedDesign, TeaserAsset, WebImage } from "@/lib/sdk/types";
+import { propertyFromListing } from "@/lib/teaser/listing";
 import { prepareImage } from "./images";
 import { SlideThumb } from "./thumb";
 
@@ -48,10 +49,32 @@ export function Section({ title, children, open: o = true, testId }: { title: st
 
 // ---------------------------------------------------------------- Templates
 
-export function TemplatesPanel({ doc, images, onPick }: { doc: TeaserDoc; images: ImageCache; onPick: (t: Template) => void }) {
+export function TemplatesPanel({ grid, doc, images, onPick, onDesign, refresh }: { grid: GridSDK; doc: TeaserDoc; images: ImageCache; onPick: (t: Template) => void; onDesign: (id: string) => void; refresh: number }) {
   const list = doc.kind === "deck" ? DECK_TEMPLATES : TRAILER_TEMPLATES;
+  const [mine, setMine] = useState<SavedDesign[]>([]);
+  useEffect(() => {
+    grid.teaser
+      .templates()
+      .then((r) => setMine(r.filter((d) => d.kind === doc.kind)))
+      .catch(() => {});
+  }, [grid, doc.kind, refresh]);
   return (
     <div className="space-y-3 p-4">
+      {mine.length > 0 && (
+        <>
+          <p className="text-xs font-semibold">My designs</p>
+          <div className="grid grid-cols-2 gap-2.5" data-testid="my-designs">
+            {mine.map((d) => (
+              <button key={d.id} type="button" data-design={d.name} onClick={() => onDesign(d.id)} className="spotlight overflow-hidden rounded-xl border border-line bg-white p-1.5 text-left transition-all hover:-translate-y-0.5 hover:shadow-md">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {d.thumb ? <img src={d.thumb} alt="" className="w-full rounded-lg bg-sand" /> : <span className="block aspect-video rounded-lg bg-sand" />}
+                <span className="mt-1.5 block truncate px-0.5 text-xs font-semibold">{d.name}</span>
+              </button>
+            ))}
+          </div>
+          <p className="pt-1 text-xs font-semibold">Templates</p>
+        </>
+      )}
       <p className="text-xs text-muted">Switching keeps your details, photos and logo. Your manual edits to slides are replaced.</p>
       <div className="grid grid-cols-2 gap-2.5">
         {list.map((t) => (
@@ -164,24 +187,7 @@ export function DetailsPanel({ grid, doc, setProp, setAgent, aiReady }: { grid: 
   const fromListing = async (code: string) => {
     const l = await grid.listings.get(code);
     if (!l) return;
-    const c = writeCopy(`${l.name}\n${l.notes ?? ""}`, {}, 0);
-    setProp({
-      name: l.name,
-      listingCode: l.code,
-      transaction: l.transactionType === "lease" ? "lease" : "sale",
-      kind: l.kindLabel,
-      price: l.price,
-      location: l.location,
-      city: l.city ?? "",
-      bedrooms: l.bedrooms,
-      bathrooms: l.bathrooms ?? null,
-      floorArea: l.floorAreaSqm,
-      lotArea: l.lotAreaSqm,
-      description: c.short || p.description,
-      highlights: c.highlights.length ? c.highlights : p.highlights,
-      amenities: [...new Set([...p.amenities, ...c.amenities])],
-      tagline: c.taglines[0] ?? p.tagline,
-    });
+    setProp(propertyFromListing(l, p));
     setListingQ("");
     setListingHits([]);
     grid.ui.notify(`Filled from ${l.code}. Contact details of the uploader are not copied.`, { tone: "ok" });

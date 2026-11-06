@@ -219,9 +219,9 @@ export function resolvePlace(text: string): Place {
 }
 
 /** One-word place aliases, for spelling correction ("makatti" → "makati", "paranake" → "paranaque"). */
-const PLACE_WORDS = [...new Set(ALIASES.map((a) => a.alias).filter((a) => !a.includes(" ") && a.length >= 4))];
+export const PLACE_WORDS = [...new Set(ALIASES.map((a) => a.alias).filter((a) => !a.includes(" ") && a.length >= 4))];
 
-function editDistance(a: string, b: string, max: number): number {
+export function editDistance(a: string, b: string, max: number): number {
   if (Math.abs(a.length - b.length) > max) return max + 1;
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
   for (let i = 1; i <= a.length; i++) {

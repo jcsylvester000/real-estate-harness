@@ -50,8 +50,10 @@ Type `/` in Deal Desk (or press the / button, or a start card) and pick a featur
 | Listings | Search by name, building, place or code → Details · Matching buyers · Compare lenders · Taxes and fees | "Details on GRID_…", "Compare lenders for GRID_…, 20% down, 20 years" |
 | Lenders | Lender (with lowest published rate) → price → down payment → term | "BDO home loan for ₱5M, 20% down, 20 years" |
 | Notes | A note, or all notes → Summarize · Action items | "Summarize note …", "Action items in note …" |
-| Property Teaser | Presentation or trailer → a listing (or from scratch) | Opens Property Teaser with the listing's details filled in |
+| Property Teaser | New presentation or New teaser trailer → Guided · Customize · one of My designs · a listing | Guided/Customize open an intake card in the chat (below); a listing opens Property Teaser with its details filled in |
 | Documents | An upload → Summarize · Key dates and amounts · Ask a question (fills the box) | "Summarize …", "In …, what does it say about " |
+
+**Property Teaser intake (no AI).** Guided asks what to add (Photos, Logo, Property details, Features & amenities, Price & terms, Contact) and shows one step at a time; Customize takes everything in one box plus pictures and a logo. "Understand it" fixes spelling (`lib/teaser/spell.ts`: a real-estate, English and Filipino word list plus Philippine place names; capitalised names mid-sentence are left alone; each fix can be undone), reads the facts, description, highlights, amenities, terms, nearby places and contact details (`lib/teaser/intake.ts`), and shows them as an editable sheet. Outputs: **PowerPoint** (made in the browser with the chosen template or saved design), **Excel** (`lib/teaser/xlsx.ts`), or **Open in Property Teaser** (saved as a project). Code: `components/apps/teaser-intake.tsx`.
 
 Keys: ↑ ↓ move, Enter or Tab pick, Backspace on an empty box goes back a step, Esc closes. Code: `components/apps/command-menu.tsx`.
 

@@ -8,6 +8,7 @@ import { freshDb } from "../helpers/db";
 import { freshListingsDb } from "../helpers/listings-db";
 
 let user: PublicUser;
+let keyId = "";
 const app = (id: string) => BUILTIN_APPS.find((a) => a.id === id)!;
 const as = (a: AppInfo): Actor => ({ user, sessionId: "t", app: a });
 const KEY = "sk-or-v1-0123456789abcdef-test-key-9z9z";
@@ -45,29 +46,43 @@ describe("bring your own AI key", () => {
 
   it("tests and saves a key encrypted; the key never comes back", async () => {
     const calls = fakeOpenRouter();
-    const test = (await callDriver(as(app("settings")), "ai.keys.test", { provider: "openrouter", apiKey: KEY })) as { ok: boolean; model: string };
+    const test = (await callDriver(as(app("settings")), "ai.keys.test", { provider: "openrouter", apiKey: KEY })) as { ok: boolean; model: string; steps: { id: string; status: string }[] };
     expect(test).toMatchObject({ ok: true, model: "openai/gpt-4o" });
+    expect(test.steps.map((x) => [x.id, x.status])).toEqual([["format", "ok"], ["connect", "ok"], ["model", "ok"], ["tools", "warn"]]);
     expect(calls[0]!.url).toContain("openrouter.ai/api/v1/chat/completions");
     expect(calls[0]!.auth).toBe(`Bearer ${KEY}`);
 
-    const saved = await callDriver(as(app("settings")), "ai.keys.save", { provider: "openrouter", apiKey: KEY, model: "anthropic/claude-haiku-5.5" });
+    const saved = (await callDriver(as(app("deal-desk")), "ai.keys.save", { provider: "openrouter", apiKey: KEY, model: "anthropic/claude-haiku-5.5", name: "My Haiku" })) as { id: string };
+    keyId = saved.id;
     expect(JSON.stringify(saved)).not.toContain(KEY);
-    expect(saved).toMatchObject({ keyHint: "9z9z", model: "anthropic/claude-haiku-5.5" });
+    expect(saved).toMatchObject({ keyHint: "9z9z", model: "anthropic/claude-haiku-5.5", name: "My Haiku" });
+    await expect(callDriver(as(app("deal-desk")), "ai.keys.save", { provider: "openai", apiKey: KEY, name: "my haiku" })).rejects.toThrow(/already have/);
     const [row] = await (await getDb()).select().from(aiKeys);
     expect(row!.keyEnc).not.toContain("sk-or");
     expect(JSON.stringify(await callDriver(as(app("settings")), "ai.keys.list", {}))).not.toContain(KEY);
   });
 
-  it("only system apps manage keys", async () => {
-    await expect(callDriver(as(app("deal-desk")), "ai.keys.list", {})).rejects.toMatchObject({ code: "permission_denied" });
+  it("only GRID's own apps manage keys", async () => {
+    await expect(callDriver(as(app("calculators")), "ai.keys.list", {})).rejects.toMatchObject({ code: "permission_denied" });
+    const thirdParty = { ...app("deal-desk"), kind: "external" } as AppInfo;
+    await expect(callDriver(as(thirdParty), "ai.keys.list", {})).rejects.toMatchObject({ code: expect.stringMatching(/^permission_/) });
+  });
+
+  it("explains a rejected key in the staged test", async () => {
+    vi.stubGlobal("fetch", async () => new Response('{"error":"bad key"}', { status: 401 }));
+    const t = (await callDriver(as(app("deal-desk")), "ai.keys.test", { provider: "anthropic", apiKey: "sk-ant-wrong-key-123" })) as { ok: boolean; steps: { id: string; status: string; detail: string }[] };
+    expect(t.ok).toBe(false);
+    expect(t.steps.find((x) => x.id === "connect")).toMatchObject({ status: "fail", detail: expect.stringMatching(/rejected this key/) });
+    expect(t.steps.find((x) => x.id === "tools")!.status).toBe("skip");
   });
 
   it("chats through the saved key when picked, and the Query Engine stays the default", async () => {
     const list = (await callDriver(as(app("deal-desk")), "ai.providers", {})) as { id: string; isDefault: boolean; label: string }[];
-    expect(list.map((p) => p.id)).toEqual(["demo", "mine:openrouter"]);
+    expect(list.map((p) => p.id)).toEqual(["demo", `mine:${keyId}`]);
+    expect(list[1]!.label).toBe("My Haiku");
     expect(list.find((p) => p.isDefault)!.id).toBe("demo");
     const calls = fakeOpenRouter();
-    const turn = (await callDriver(as(app("deal-desk")), "ai.chat", { message: "What is a TCT?", provider: "mine:openrouter" })) as { reply: string; model: string };
+    const turn = (await callDriver(as(app("deal-desk")), "ai.chat", { message: "What is a TCT?", provider: `mine:${keyId}` })) as { reply: string; model: string };
     expect(turn.reply).toBe("OK");
     expect(calls[0]!.body.model).toBe("anthropic/claude-haiku-5.5");
     expect(calls[0]!.auth).toBe(`Bearer ${KEY}`);
@@ -76,8 +91,8 @@ describe("bring your own AI key", () => {
   });
 
   it("removes a key", async () => {
-    await callDriver(as(app("settings")), "ai.keys.remove", { provider: "openrouter" });
+    await callDriver(as(app("settings")), "ai.keys.remove", { id: keyId });
     expect(await callDriver(as(app("settings")), "ai.keys.list", {})).toEqual([]);
-    await expect(callDriver(as(app("deal-desk")), "ai.chat", { message: "hi", provider: "mine:openrouter" })).rejects.toMatchObject({ code: "provider_not_configured" });
+    await expect(callDriver(as(app("deal-desk")), "ai.chat", { message: "hi", provider: `mine:${keyId}` })).rejects.toMatchObject({ code: "provider_not_configured" });
   });
 });

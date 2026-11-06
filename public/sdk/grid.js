@@ -134,9 +134,10 @@
         list: c("ai.keys.list"),
         save: c("ai.keys.save"),
         test: c("ai.keys.test", LONG_TIMEOUT),
-        remove: function (provider) {
-          return request("ai.keys.remove", { provider: provider });
+        remove: function (id) {
+          return request("ai.keys.remove", { id: id });
         },
+        presets: c("ai.keys.presets"),
       },
     },
 
@@ -239,6 +240,14 @@
       },
       duplicate: function (id) {
         return request("teaser.duplicate", { id: id });
+      },
+      templates: c("teaser.templates"),
+      getTemplate: function (id) {
+        return request("teaser.getTemplate", { id: id });
+      },
+      saveTemplate: c("teaser.saveTemplate"),
+      deleteTemplate: function (id) {
+        return request("teaser.deleteTemplate", { id: id });
       },
       assets: function (source) {
         return request("teaser.assets", { source: source });

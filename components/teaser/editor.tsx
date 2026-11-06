@@ -2,6 +2,7 @@
 /** Property Teaser editor: panels, canvas, toolbar, slides, preview player, autosave and exports. */
 import {
   ArrowLeft,
+  BookmarkPlus,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -38,6 +39,7 @@ import { Stage, visualBox } from "./stage";
 import { SlideThumb } from "./thumb";
 import { Toolbar } from "./toolbar";
 import { editEls, useDoc, withDetails } from "./use-doc";
+import { fromDesign, stuckTexts, toDesign } from "@/lib/teaser/listing";
 
 type Tab = "templates" | "details" | "brand" | "elements" | "photos";
 const TABS: [Tab, string, typeof Presentation][] = [
@@ -202,6 +204,41 @@ export function Editor({ grid, project, onBack }: { grid: GridSDK; project: Proj
     setSlideIdx(0);
   };
 
+  // ---- saved designs: the look is kept, the property switches
+  const [designsTick, setDesignsTick] = useState(0);
+  const saveDesign = async () => {
+    const stuck = stuckTexts(doc);
+    const name = await grid.ui.prompt(
+      stuck.length
+        ? `Name this design. Note: ${stuck.length} text${stuck.length === 1 ? "" : "s"} you typed by hand mention this property (“${stuck[0]}”). They will not change for other properties; use the Details panel for those instead.`
+        : "Name this design. Use it for other properties: the layout, colours, fonts, logo and contact stay; the property details switch.",
+      `${t?.name ?? "My"} · ${doc.agent.company || "design"}`,
+      { title: "Save as my design" },
+    );
+    if (!name?.trim()) return;
+    try {
+      const d = toDesign(doc);
+      const c = renderToCanvas(d, d.slides[0]!, images, 360 / d.width);
+      await grid.teaser.saveTemplate({ name: name.trim().slice(0, 80), kind: doc.kind, data: d as unknown as Record<string, unknown>, thumb: c.toDataURL("image/jpeg", 0.72) });
+      setDesignsTick((x) => x + 1);
+      grid.ui.notify(`Saved “${name.trim()}”. Find it under Templates → My designs, or on the Property Teaser home.`, { tone: "ok" });
+    } catch (e) {
+      grid.ui.notify(errText(e), { tone: "bad" });
+    }
+  };
+  const useDesign = async (id: string) => {
+    try {
+      const r = await grid.teaser.getTemplate(id);
+      if (!(await grid.ui.confirm(`Use “${r.name}”? Your property details stay; the slides take that design.`, { okLabel: "Use design" }))) return;
+      const design = r.data as unknown as TeaserDoc;
+      update((d) => ({ ...fromDesign(design, d.property), agent: d.agent.name ? d.agent : design.agent }));
+      setSel([]);
+      setSlideIdx(0);
+    } catch (e) {
+      grid.ui.notify(errText(e), { tone: "bad" });
+    }
+  };
+
   // ---- slides
   const addSlide = (role: string) => {
     const t = templateById(doc.templateId);
@@ -357,6 +394,9 @@ export function Editor({ grid, project, onBack }: { grid: GridSDK; project: Proj
             <Plus size={15} />
           </button>
           <span className="mx-1 h-5 w-px bg-line" />
+          <button type="button" className="btn btn-ghost h-8 min-h-8 px-2.5 text-xs" onClick={saveDesign} title="Save this look to reuse it for other properties">
+            <BookmarkPlus size={14} /> <span className="hidden md:inline">Save design</span>
+          </button>
           <button type="button" className="btn btn-ghost h-8 min-h-8 px-2.5 text-xs" onClick={() => setPlaying(true)}>
             <Play size={14} /> Preview
           </button>
@@ -402,7 +442,7 @@ export function Editor({ grid, project, onBack }: { grid: GridSDK; project: Proj
         </nav>
         {tab && (
           <aside className="ga-slide-l w-80 shrink-0 overflow-y-auto border-r border-line bg-white" aria-label={TABS.find((x) => x[0] === tab)![1]}>
-            {tab === "templates" && <TemplatesPanel doc={doc} images={images} onPick={switchTemplate} />}
+            {tab === "templates" && <TemplatesPanel grid={grid} doc={doc} images={images} onPick={switchTemplate} onDesign={useDesign} refresh={designsTick} />}
             {tab === "details" && <DetailsPanel grid={grid} doc={doc} setProp={setProp} setAgent={setAgent} aiReady={aiReady} />}
             {tab === "brand" && <BrandPanel grid={grid} doc={doc} setBrand={setBrand} onTemplateColors={() => t && setBrand({ ...brandFrom(t, doc.brand.logo) })} />}
             {tab === "elements" && <ElementsPanel doc={doc} add={add} />}

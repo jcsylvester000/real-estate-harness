@@ -38,6 +38,13 @@ export interface TeaserSummary {
   thumb: string;
   updatedAt: string;
 }
+export interface SavedDesign {
+  id: string;
+  name: string;
+  kind: string;
+  thumb?: string;
+  updatedAt: string;
+}
 export interface TeaserAsset {
   id: string;
   src: string;
@@ -53,6 +60,8 @@ export interface TeaserAsset {
 import type { WebImage } from "@/lib/server/services/teasers";
 export type { WebImage };
 export interface SavedAiKey {
+  id: string;
+  name: string;
   provider: string;
   label: string;
   keyHint: string;
@@ -62,6 +71,8 @@ export interface SavedAiKey {
   updatedAt: string;
 }
 export interface AiKeyForm {
+  id?: string;
+  name?: string;
   provider: string;
   apiKey?: string;
   model?: string;
@@ -90,8 +101,9 @@ export interface GridSDK {
     keys: {
       list(): Promise<SavedAiKey[]>;
       save(k: AiKeyForm): Promise<SavedAiKey>;
-      test(k: AiKeyForm): Promise<{ ok: boolean; model: string; ms: number; reply?: string; error?: string }>;
-      remove(provider: string): Promise<boolean>;
+      test(k: AiKeyForm): Promise<{ ok: boolean; model: string; ms: number; steps: { id: string; label: string; status: "ok" | "warn" | "fail" | "skip"; detail: string; ms?: number }[] }>;
+      remove(id: string): Promise<boolean>;
+      presets(): Promise<{ id: string; label: string; short: string; model: string; budget: string; baseUrl: string; keyHelp: string; models: string[] }[]>;
     };
   };
   tools: { list(): Promise<ToolDefinition[]>; run<T = unknown>(name: string, args: Record<string, unknown>): Promise<T> };
@@ -121,6 +133,10 @@ export interface GridSDK {
     save(p: { id?: string; kind: "deck" | "trailer"; title: string; templateId: string; data: Record<string, unknown>; thumb?: string }): Promise<{ id: string; updatedAt: string }>;
     delete(id: string): Promise<boolean>;
     duplicate(id: string): Promise<{ id: string; updatedAt: string }>;
+    templates(): Promise<SavedDesign[]>;
+    getTemplate(id: string): Promise<SavedDesign & { data: Record<string, unknown> }>;
+    saveTemplate(t: { id?: string; name: string; kind: "deck" | "trailer"; data: Record<string, unknown>; thumb?: string }): Promise<{ id: string }>;
+    deleteTemplate(id: string): Promise<boolean>;
     assets(source?: "upload" | "logo" | "web"): Promise<TeaserAsset[]>;
     addAsset(a: { dataUrl: string; width?: number; height?: number; source?: "upload" | "logo"; name?: string }): Promise<TeaserAsset>;
     deleteAsset(id: string): Promise<boolean>;

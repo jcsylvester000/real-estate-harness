@@ -11,13 +11,13 @@ a browser desktop, windows, iframe apps and an app SDK. No Puter code is used (P
                                        │ (third-party apps)                        │   (Claude / OpenAI-compatible / Gemini) or Query Engine (no AI)
 ```
 
-## What is inside (v0.3)
+## What is inside (v0.6)
 
 | Built-in app | What it does |
 |---|---|
-| **Deal Desk AI** | Type **/** to pick a feature (search property, buyer matching, calculator, listings, lenders, notes, documents) and answer short follow-ups by clicking; or just ask. It predicts the next step ("Up next" chips, suggested commands, ghost-text completion). Ask about costs, loans, listings, buyer matches and your documents. With an AI key it uses Claude, OpenAI-compatible models (OpenRouter) or Gemini. **Without a key it uses the Query Engine** (below). It shows the calculations used and the cost in pesos, and saves conversations. Upload PDFs, Word files or photos with 📎. |
+| **Deal Desk AI** | Type **/** to pick a feature (search property, buyer matching, calculator, listings, lenders, notes, documents) and answer short follow-ups by clicking; or just ask. It predicts the next step ("Up next" chips, suggested commands, ghost-text completion). Ask about costs, loans, listings, buyer matches and your documents. With an AI key it uses Claude, OpenAI-compatible models (OpenRouter) or Gemini. **Without a key it uses the Query Engine** (below). It shows the calculations used and the cost in pesos, and saves conversations. Upload PDFs, Word files or photos with 📎. **/ → Property Teaser** makes a presentation or trailer from what you type: Guided (pick what to add, one step at a time) or Customize (everything in one go, with pictures). It fixes spelling, shows the details as an editable sheet, then makes a **PowerPoint**, an **Excel** sheet, or opens it in Property Teaser. |
 | **Buyer Matching** | Describe the buyer (kind, place, budget, bedrooms, size, purpose, features) and set how much each criterion matters (must have / important / nice to have / ignore). Every listing gets a **match score from 1 to 10** with a "why this score" breakdown. Save buyers; saved buyers are scored against every listing automatically (two-way). |
-| **Property Teaser** | Design **presentations and teaser trailers** from 30 templates (20 decks, 10 trailers, landscape and vertical). Add your logo, brand colours and fonts, details, photos (upload, free web images, links), features and amenities. "Write it for me" turns your notes into a tagline, description and highlights without AI. Canva-style editing: text, shapes, icons, photos, snapping, animations. Export to **PowerPoint, PDF, Word, MP4 video** or PNG. See [docs/PROPERTY_TEASER.md](docs/PROPERTY_TEASER.md). |
+| **Property Teaser** | Design **presentations and teaser trailers** from 30 templates (20 decks, 10 trailers, landscape and vertical). Add your logo, brand colours and fonts, details, photos (upload, free web images, links), features and amenities. "Write it for me" turns your notes into a tagline, description and highlights without AI. Canva-style editing: text, shapes, icons, photos, snapping, animations. Export to **PowerPoint, PDF, Word, MP4 video** or PNG. **Save design** keeps a look (layout, colours, fonts, logo, contact) and reuses it for any property; **Use for listings…** makes one project per listing (up to 20 at once) with the same design and each listing's details. See [docs/PROPERTY_TEASER.md](docs/PROPERTY_TEASER.md). |
 | **Calculators** | **Home loan (lenders):** compare Pag-IBIG and 13 banks/in-house financing, or pick one lender. Rates come from a researched, editable table (**Lender rates** tab, with sources and as-of dates). Also taxes and fees, loan payment, commission, Maceda refund and foreign-buyer rules. No AI, no cost. |
 | **Property Finder** | Type what the client wants ("2BR condo for rent in BGC under 60k") and get ranked matches from the listings index. **No AI needed.** |
 | **Listings** | Browse, add, edit and **import GRID CSV exports**. Each listing is analysed for matching (region, location tier, features, purposes, data completeness). |
@@ -28,7 +28,7 @@ a browser desktop, windows, iframe apps and an app SDK. No Puter code is used (P
 - **Permissions (the Puter model):** each app declares permissions. Built-in apps get what they declare. A third-party app runs sandboxed (opaque origin, no cookies). The user must allow each permission once.
 - **Desktop:** drag icons anywhere. Right-click the desktop to choose **Snap icons to grid** (drops swap places) or **Free icon placement**, or **Tidy up icons**; the layout is saved per user.
 - **Look and motion:** spotlight cards, glowing input, shimmer buttons, animated windows and menus (inspired by 21st.dev components); all motion turns off when the system asks for reduced motion.
-- **AI is off by default:** the default everywhere is the no-AI Query Engine. To use AI, each person adds their **own API key** in Settings → AI setup: Claude, OpenAI, OpenRouter, Gemini or any OpenAI-compatible service. Keys are tested before saving, encrypted on the server (AES-256-GCM from `APP_SECRET`) and never shown again. Then pick the key in Deal Desk's provider menu, or use Polish with AI in Property Teaser. Server-wide keys in `.env.local` still work as optional team keys.
+- **AI is off by default:** the default everywhere is the no-AI Query Engine. To use AI, pick **＋ Add key…** in Deal Desk's AI menu (top right) or Settings → AI setup. Choose a model from the list (Claude, OpenAI, OpenRouter, Gemini) or any OpenAI-compatible service, give it your own name, paste the key, and Grid runs a connection test (key format, sign-in, the model answers, tool use) with a plain reason if a step fails. Only a working key is added to your AI menu. Keys are encrypted on the server (AES-256-GCM from `APP_SECRET`) and never shown again; each person can keep up to 12. Server-wide keys in `.env.local` are hidden from the menu unless `GRID_SHOW_TEAM_KEYS=true`.
 - **Works without AI:** with no key, the taskbar shows "Query Engine (no AI)" and every app works fully.
 - **AI cost control:** the harness caps tool steps and spend per turn. A per-person daily allowance in pesos (`GRID_DAILY_AI_CAP_PHP`) applies on top. Every turn is metered in `usage_events` (Query Engine turns at ₱0).
 
@@ -87,8 +87,8 @@ Any OpenRouter model with tool calling works, for example `anthropic/claude-haik
 
 | Command | What it does |
 |---|---|
-| `npm test` | 160 unit and integration tests (in-memory Postgres; no network) |
-| `npm run e2e` | 22 browser tests on a production build (`npm run build` first), including PDF and OCR uploads |
+| `npm test` | 172 unit and integration tests (in-memory Postgres; no network) |
+| `npm run e2e` | 26 browser tests on a production build (`npm run build` first), including PDF and OCR uploads |
 | `npm run projections:rebuild` | Rebuild the listings read models (CQRS) |
 | `npm run listings:import -- file.csv` | Import a GRID listings export |
 | `npm run lint` / `npm run typecheck` | Code checks |

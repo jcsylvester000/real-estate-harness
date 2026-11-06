@@ -13,8 +13,9 @@ import { SAMPLE } from "@/components/teaser/thumb";
 import { ImageCache } from "@/lib/teaser/render";
 import { DECK_TEMPLATES, TRAILER_TEMPLATES, brandFrom, newDoc, type Template } from "@/lib/teaser/templates";
 import { emptyAgent, emptyProperty, type TeaserDoc, type TeaserKind } from "@/lib/teaser/types";
-import { writeCopy } from "@/lib/teaser/copy";
-import type { GridSDK, TeaserSummary } from "@/lib/sdk/types";
+import { fromDesign, propertyFromListing } from "@/lib/teaser/listing";
+import { MyDesigns } from "@/components/teaser/designs";
+import type { GridSDK, SavedDesign, TeaserSummary } from "@/lib/sdk/types";
 
 type View = { name: "home" } | { name: "pick"; kind: TeaserKind } | { name: "edit"; project: Project };
 
@@ -55,6 +56,8 @@ function Home({ grid, onNew, onOpen }: { grid: GridSDK; onNew: (k: TeaserKind) =
             </button>
           ))}
         </div>
+
+        <MyDesigns grid={grid} onChanged={load} />
 
         <div className="mt-8 flex items-center gap-3">
           <h2 className="font-sans text-sm font-semibold">Your projects</h2>
@@ -105,7 +108,14 @@ function Home({ grid, onNew, onOpen }: { grid: GridSDK; onNew: (k: TeaserKind) =
   );
 }
 
-function Picker({ kind, base, onPick, onBack }: { kind: TeaserKind; base: Pick<TeaserDoc, "property" | "agent" | "brand">; onPick: (t: Template) => void; onBack: () => void }) {
+function Picker({ grid, kind, base, onPick, onDesign, onBack }: { grid: GridSDK; kind: TeaserKind; base: Pick<TeaserDoc, "property" | "agent" | "brand">; onPick: (t: Template) => void; onDesign: (id: string) => void; onBack: () => void }) {
+  const [mine, setMine] = useState<SavedDesign[]>([]);
+  useEffect(() => {
+    grid.teaser
+      .templates()
+      .then((r) => setMine(r.filter((d) => d.kind === kind)))
+      .catch(() => {});
+  }, [grid, kind]);
   const images = useMemo(() => new ImageCache(), []);
   const all = kind === "deck" ? DECK_TEMPLATES : TRAILER_TEMPLATES;
   const cats = ["All", ...new Set(all.map((t) => t.category))];
@@ -120,6 +130,20 @@ function Picker({ kind, base, onPick, onBack }: { kind: TeaserKind; base: Pick<T
         </button>
         <h1 className="mt-3 text-3xl">{kind === "deck" ? "Choose a presentation template" : "Choose a trailer template"}</h1>
         <p className="mt-1 text-sm text-muted">Everything stays editable: colours, fonts, text, photos and layout. You can switch templates later without losing your details.</p>
+        {mine.length > 0 && (
+          <div className="mt-4" aria-label="My designs">
+            <p className="text-sm font-semibold">My designs</p>
+            <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {mine.map((d) => (
+                <button key={d.id} type="button" data-design={d.name} onClick={() => onDesign(d.id)} className="spotlight overflow-hidden rounded-xl border border-line bg-white p-1.5 text-left transition-all hover:-translate-y-0.5 hover:shadow-md">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {d.thumb ? <img src={d.thumb} alt="" className="w-full rounded-lg bg-sand" /> : <span className="block aspect-video rounded-lg bg-sand" />}
+                  <span className="mt-1.5 block truncate px-0.5 text-xs font-semibold">{d.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="mt-4 flex flex-wrap gap-1.5" role="tablist" aria-label="Categories">
           {cats.map((c) => (
             <button key={c} role="tab" aria-selected={cat === c} type="button" onClick={() => setCat(c)} className={`rounded-full px-3 py-1 text-xs transition-colors ${cat === c ? "bg-navy text-cream" : "bg-white ring-1 ring-line hover:ring-bronze"}`}>
@@ -153,6 +177,12 @@ function TeaserApp({ grid }: { grid: GridSDK }) {
       .get<{ agent: TeaserDoc["agent"]; logo: string | null }>("teaser-defaults")
       .then((d) => d && setDefaults({ agent: { ...emptyAgent(), ...d.agent }, logo: d.logo ?? null }))
       .catch(() => {});
+    // Opened with a saved project (Deal Desk → "Open in Property Teaser"): grid.ui.openApp("property-teaser", { project })
+    if (typeof grid.launchArgs.project === "string")
+      grid.teaser
+        .get(grid.launchArgs.project)
+        .then((p) => setView({ name: "edit", project: { id: p.id, title: p.title, doc: p.data as unknown as TeaserDoc } }))
+        .catch((e) => grid.ui.notify(errText(e), { tone: "bad" }));
     // Opened from a listing: grid.ui.openApp("property-teaser", { code, kind })
     const code = typeof grid.launchArgs.code === "string" ? grid.launchArgs.code : null;
     if (code)
@@ -160,25 +190,7 @@ function TeaserApp({ grid }: { grid: GridSDK }) {
         .get(code)
         .then((l) => {
           if (!l) return;
-          const c = writeCopy(`${l.name}\n${l.notes ?? ""}`, {}, 0);
-          setPrefill({
-            ...emptyProperty(),
-            name: l.name,
-            listingCode: l.code,
-            transaction: l.transactionType === "lease" ? "lease" : "sale",
-            kind: l.kindLabel,
-            price: l.price,
-            location: l.location,
-            city: l.city ?? "",
-            bedrooms: l.bedrooms,
-            bathrooms: l.bathrooms ?? null,
-            floorArea: l.floorAreaSqm,
-            lotArea: l.lotAreaSqm,
-            description: c.short,
-            tagline: c.taglines[0] ?? "",
-            highlights: c.highlights,
-            amenities: c.amenities,
-          });
+          setPrefill(propertyFromListing(l));
           setView({ name: "pick", kind: grid.launchArgs.kind === "trailer" ? "trailer" : "deck" });
         })
         .catch(() => {});
@@ -203,7 +215,19 @@ function TeaserApp({ grid }: { grid: GridSDK }) {
       {view.name === "home" && <Home grid={grid} onNew={(k) => setView({ name: "pick", kind: k })} onOpen={open} />}
       {view.name === "pick" && (
         <Picker
+          grid={grid}
           kind={view.kind}
+          onDesign={async (id) => {
+            try {
+              const r = await grid.teaser.getTemplate(id);
+              const design = r.data as unknown as TeaserDoc;
+              const doc = { ...fromDesign(design, base.property), agent: design.agent.name ? design.agent : base.agent };
+              setView({ name: "edit", project: { title: base.property.name || r.name, doc } });
+              setPrefill(null);
+            } catch (e) {
+              grid.ui.notify(errText(e), { tone: "bad" });
+            }
+          }}
           base={base}
           onBack={() => setView({ name: "home" })}
           onPick={(t) => {

@@ -41,6 +41,24 @@ describe("Property Teaser projects", () => {
   });
 });
 
+describe("saved designs (my templates)", () => {
+  it("saves, lists, opens and deletes designs per user; Deal Desk can use them", async () => {
+    const r = (await callDriver(as(user), "teaser.saveTemplate", { name: "Cruz Realty navy", kind: "deck", data: { v: 1, slides: [] } })) as { id: string };
+    expect((await callDriver(as(user), "teaser.templates", {})) as { name: string }[]).toEqual([expect.objectContaining({ name: "Cruz Realty navy", kind: "deck" })]);
+    expect(await callDriver(as(other), "teaser.templates", {})).toEqual([]);
+    await expect(callDriver(as(other), "teaser.getTemplate", { id: r.id })).rejects.toMatchObject({ code: "not_found" });
+    expect(await callDriver(as(user, app("deal-desk")), "teaser.getTemplate", { id: r.id })).toMatchObject({ name: "Cruz Realty navy", data: { v: 1 } });
+    await callDriver(as(user), "teaser.saveTemplate", { id: r.id, name: "Renamed", kind: "deck", data: { v: 1, slides: [1] } });
+    expect(await callDriver(as(user), "teaser.getTemplate", { id: r.id })).toMatchObject({ name: "Renamed" });
+    await expect(callDriver(as(other), "teaser.deleteTemplate", { id: r.id })).rejects.toMatchObject({ code: "not_found" });
+    await callDriver(as(user), "teaser.deleteTemplate", { id: r.id });
+    expect(await callDriver(as(user), "teaser.templates", {})).toEqual([]);
+  });
+  it("needs a name", async () => {
+    await expect(callDriver(as(user), "teaser.saveTemplate", { name: " ", kind: "deck", data: {} })).rejects.toMatchObject({ code: "invalid_input" });
+  });
+});
+
 describe("images", () => {
   it("stores real images only, readable by the owner only", async () => {
     const a = (await callDriver(as(user), "teaser.addAsset", { dataUrl: `data:image/png;base64,${PNG.toString("base64")}`, width: 1, height: 1, name: "dot.png" })) as { id: string; src: string; mime: string };
@@ -96,7 +114,7 @@ describe("Polish with AI", () => {
     );
     await callDriver(as(user, app("settings")), "ai.keys.save", { provider: "openrouter", apiKey: "sk-or-v1-test-test-test-1234" });
     const r = await callDriver(as(user), "teaser.polish", { text: "2BR condo in BGC with city views" });
-    expect(r).toMatchObject({ taglines: ["Live above BGC"], short: "A bright 2BR.", highlights: ["City views"], provider: "OpenRouter (many models, one key)" });
+    expect(r).toMatchObject({ taglines: ["Live above BGC"], short: "A bright 2BR.", highlights: ["City views"], provider: "OpenRouter · gpt-4o" });
     const usage = (await callDriver(as(user, app("settings")), "usage.mine", {})) as { today: { turns: number } };
     expect(usage.today.turns).toBe(1);
   });

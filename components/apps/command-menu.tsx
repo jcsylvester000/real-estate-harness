@@ -17,10 +17,12 @@ import {
   Handshake,
   HelpCircle,
   Landmark,
+  LayoutTemplate,
   NotebookPen,
   Presentation,
   Search,
   Sparkles,
+  Wand2,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -37,7 +39,14 @@ export interface Opt {
   value?: string | number;
 }
 
-type Done = { send: string } | { fill: string } | { open: { app: string; args?: Record<string, unknown> } };
+/** Starts the Property Teaser intake card in the chat. */
+export interface IntakeSpec {
+  kind: "deck" | "trailer";
+  mode: "guided" | "customize";
+  designId?: string;
+  designName?: string;
+}
+type Done = { send: string } | { fill: string } | { open: { app: string; args?: Record<string, unknown> } } | { intake: IntakeSpec };
 export interface Step {
   title: string;
   placeholder: string;
@@ -86,7 +95,7 @@ const amountOpt = (q: string, verb = "Use"): Opt | null => {
 };
 const textOpt = (q: string, verb: string): Opt | null => (q.trim().length > 1 ? { id: `txt-${q}`, label: `${verb} “${q.trim()}”`, value: q.trim(), icon: CornerDownLeft } : null);
 
-export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t: string) => void; fill: (t: string) => void; open?: (app: string, args?: Record<string, unknown>) => void }) {
+export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t: string) => void; fill: (t: string) => void; open?: (app: string, args?: Record<string, unknown>) => void; intake?: (i: IntakeSpec) => void }) {
   const [stack, setStack] = useState<{ step: Step; crumb: string }[]>([]);
   const [rootOpen, setRootOpen] = useState(false);
   const [options, setOptionsRaw] = useState<Opt[]>([]);
@@ -376,15 +385,41 @@ export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t
         icon: Presentation,
         keywords: "teaser presentation deck trailer video powerpoint brochure design",
         start: () =>
-          choice("What do you want to make?", [["deck", "Presentation", "PowerPoint, PDF, Word"], ["trailer", "Teaser trailer", "Video and auto-play PowerPoint"]], (kind) => ({
-            title: "For which listing?",
-            placeholder: "Type a name, building, place or code",
-            load: async (q) => {
-              const r = await grid.listings.search(q.trim() ? { query: q.trim(), limit: 8 } : { sort: "newest", limit: 8 });
-              return [{ id: "blank", label: "Start from scratch", icon: Sparkles }, ...r.listings.map((l) => ({ id: l.code, label: l.name, hint: `${l.code} · ${l.city ?? l.province ?? ""}`, icon: Building2 }))];
-            },
-            pick: (o) => ({ open: { app: "property-teaser", args: o.id === "blank" ? { kind } : { code: o.id, kind } } }),
-          })),
+          choice("What do you want to make?", [["deck", "New presentation", "PowerPoint, PDF, Word"], ["trailer", "New teaser trailer", "Video and auto-play PowerPoint"]], (k) => {
+            const kind = k as "deck" | "trailer";
+            const how = (designId?: string, designName?: string) =>
+              choice(designName ? `With “${designName}”: how do you want to add the details?` : "How do you want to add the details?", [
+                ["guided", "Guided", "Choose what to add (photos, logo, details…), one at a time"],
+                ["customize", "Customize", "Type or paste everything in one go, with pictures"],
+              ], (mode) => ({ intake: { kind, mode: mode as "guided" | "customize", designId, designName } }));
+            return {
+              title: "Start from",
+              placeholder: "Pick one, or type a listing name or code",
+              load: async (q) => {
+                const [designs, r] = await Promise.all([
+                  grid.teaser.templates().catch(() => []),
+                  grid.listings.search(q.trim() ? { query: q.trim(), limit: 6 } : { sort: "newest", limit: 6 }),
+                ]);
+                const mine = (designs as { id: string; name: string; kind: string }[]).filter((d) => d.kind === kind && match(q, d.name));
+                return [
+                  ...(!q.trim()
+                    ? [
+                        { id: "guided", label: "Guided", hint: "Choose what to add, one at a time", icon: Sparkles },
+                        { id: "customize", label: "Customize", hint: "Everything in one go, with pictures", icon: Wand2 },
+                      ]
+                    : []),
+                  ...mine.map((d) => ({ id: `design:${d.id}`, label: d.name, hint: "My saved design", icon: LayoutTemplate, value: d.name })),
+                  ...r.listings.map((l) => ({ id: l.code, label: l.name, hint: `Listing ${l.code} · ${l.city ?? l.province ?? ""}`, icon: Building2 })),
+                ];
+              },
+              pick: (o) =>
+                o.id === "guided" || o.id === "customize"
+                  ? { intake: { kind, mode: o.id } }
+                  : o.id.startsWith("design:")
+                    ? how(o.id.slice(7), String(o.value))
+                    : { open: { app: "property-teaser", args: { code: o.id, kind } } },
+            };
+          }),
       },
       { id: "help", label: "What can you do?", hint: "Examples of everything Deal Desk answers", icon: HelpCircle, keywords: "help examples", start: () => ({ send: "What can you do?" }) },
     ],
@@ -491,6 +526,11 @@ export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t
       if ("open" in next) {
         close();
         done.open?.(next.open.app, next.open.args);
+        return "";
+      }
+      if ("intake" in next) {
+        close();
+        done.intake?.(next.intake);
         return "";
       }
       if ("fill" in next) {

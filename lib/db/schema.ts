@@ -235,7 +235,10 @@ export const documentChunks = pgTable(
 export const aiKeys = pgTable(
   "ai_keys",
   {
+    id: uuid("id").notNull().defaultRandom(),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    /** The name shown in Deal Desk's AI menu ("My GPT-4o", "Claude for drafting"). */
+    name: text("name").notNull().default(""),
     /** anthropic | openai | openrouter | gemini | custom */
     provider: text("provider").notNull(),
     keyEnc: text("key_enc").notNull(),
@@ -245,7 +248,7 @@ export const aiKeys = pgTable(
     budgetModel: text("budget_model").notNull().default(""),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.provider] })],
+  (t) => [primaryKey({ columns: [t.id] }), index("ai_keys_user_idx").on(t.userId)],
 );
 
 /** Property Teaser projects (presentation decks and teaser trailers). The design is one JSON document. */
@@ -264,6 +267,22 @@ export const teasers = pgTable(
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
   (t) => [index("teasers_user_idx").on(t.userId, t.updatedAt)],
+);
+
+/** Saved designs ("my templates"): a teaser without property details, reused for other properties. */
+export const teaserTemplates = pgTable(
+  "teaser_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: text("kind").notNull(),
+    data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+    thumb: text("thumb").notNull().default(""),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("teaser_templates_user_idx").on(t.userId, t.updatedAt)],
 );
 
 /** Images used in teasers: uploads, logos and pictures imported from the web (with their credit). */

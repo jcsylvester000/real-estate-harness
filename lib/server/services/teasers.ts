@@ -11,12 +11,12 @@ import { isIP } from "node:net";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/lib/db/client";
-import { teaserAssets, teasers, usageEvents } from "@/lib/db/schema";
+import { teaserAssets, teaserTemplates, teasers, usageEvents } from "@/lib/db/schema";
 import { estimateCostUsd, harnessConfig } from "@/lib/harness";
 import { invalid, notFound, DriverError } from "../errors";
 import { anyKeyProvider } from "./ai-keys";
 
-export const TEASER_LIMITS = { maxProjects: 300, maxDataBytes: 2_500_000, maxAssetBytes: 4_500_000, maxWebBytes: 8_000_000, maxAssets: 1500 };
+export const TEASER_LIMITS = { maxProjects: 300, maxDataBytes: 2_500_000, maxAssetBytes: 4_500_000, maxWebBytes: 8_000_000, maxAssets: 1500, maxTemplates: 60 };
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 // ---------------------------------------------------------------- projects
@@ -79,6 +79,56 @@ export async function duplicateTeaser(userId: string, id: string) {
   const db = await getDb();
   const [row] = await db.select({ thumb: teasers.thumb }).from(teasers).where(eq(teasers.id, id));
   return saveTeaser(userId, { kind: t.kind as "deck" | "trailer", title: `${t.title} (copy)`.slice(0, 120), templateId: t.templateId, data: t.data, thumb: row?.thumb ?? "" });
+}
+
+// ---------------------------------------------------------------- saved designs ("my templates")
+
+export const templateInput = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().trim().min(1).max(80),
+  kind: z.enum(["deck", "trailer"]),
+  data: z.record(z.string(), z.unknown()),
+  thumb: teaserInput.shape.thumb,
+});
+
+export async function listTemplates(userId: string) {
+  const db = await getDb();
+  const rows = await db
+    .select({ id: teaserTemplates.id, name: teaserTemplates.name, kind: teaserTemplates.kind, thumb: teaserTemplates.thumb, updatedAt: teaserTemplates.updatedAt })
+    .from(teaserTemplates)
+    .where(eq(teaserTemplates.userId, userId))
+    .orderBy(desc(teaserTemplates.updatedAt))
+    .limit(TEASER_LIMITS.maxTemplates);
+  return rows.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString() }));
+}
+
+export async function getTemplate(userId: string, id: string) {
+  const db = await getDb();
+  const [r] = await db.select().from(teaserTemplates).where(and(eq(teaserTemplates.id, id), eq(teaserTemplates.userId, userId)));
+  if (!r) throw notFound("Design");
+  return { id: r.id, name: r.name, kind: r.kind, data: r.data, updatedAt: r.updatedAt.toISOString() };
+}
+
+export async function saveTemplate(userId: string, input: z.infer<typeof templateInput>) {
+  if (JSON.stringify(input.data).length > TEASER_LIMITS.maxDataBytes) throw invalid("This design is too large to save.");
+  const db = await getDb("write");
+  const values = { name: input.name, kind: input.kind, data: input.data, thumb: input.thumb, updatedAt: new Date() };
+  if (input.id) {
+    const r = await db.update(teaserTemplates).set(values).where(and(eq(teaserTemplates.id, input.id), eq(teaserTemplates.userId, userId))).returning({ id: teaserTemplates.id });
+    if (!r.length) throw notFound("Design");
+    return { id: r[0]!.id };
+  }
+  const [{ n }] = (await db.select({ n: sql<number>`count(*)::int` }).from(teaserTemplates).where(eq(teaserTemplates.userId, userId))) as [{ n: number }];
+  if (n >= TEASER_LIMITS.maxTemplates) throw invalid(`You can keep up to ${TEASER_LIMITS.maxTemplates} saved designs. Delete some first.`);
+  const [r] = await db.insert(teaserTemplates).values({ userId, ...values }).returning({ id: teaserTemplates.id });
+  return { id: r!.id };
+}
+
+export async function deleteTemplate(userId: string, id: string) {
+  const db = await getDb("write");
+  const r = await db.delete(teaserTemplates).where(and(eq(teaserTemplates.id, id), eq(teaserTemplates.userId, userId))).returning({ id: teaserTemplates.id });
+  if (!r.length) throw notFound("Design");
+  return true;
 }
 
 // ---------------------------------------------------------------- assets
