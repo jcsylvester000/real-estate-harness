@@ -1,0 +1,21 @@
+# dependencies and builds
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+.netlify/
+.sync/
+*.tsbuildinfo
+next-env.d.ts
+# secrets: never commit
+.env
+.env.local
+.env.*.local
+*.pem
+# local upload driver (tests only)
+.data/
+.fntest-*/
+.data/
+.sync/

@@ -1,0 +1,11 @@
+# Grid Agentic on Netlify. Environment variables are set in the Netlify UI, never here (see .env.example).
+[build]
+  command = "npm run build:netlify"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

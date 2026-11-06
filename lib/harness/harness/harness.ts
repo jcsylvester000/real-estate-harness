@@ -1,0 +1,117 @@
+// The harness agent loop: one rulebook + one tool set, driven by any ModelProvider.
+// Flow per turn: screen input → load session → [model → run tools]* → guardrails → save session.
+
+import { randomUUID } from "node:crypto";
+import { estimateCostUsd } from "../providers/pricing";
+import { ToolRegistry } from "../tools/tool-registry";
+import { reviewReply, screenUserInput } from "./guardrails";
+import { InMemorySessionStore, trimHistory, type SessionStore } from "./session-store";
+import { buildSystemPrompt, type SystemPromptOptions } from "./system-prompt";
+import type { ChatMessage, HarnessTurnResult, ModelProvider, TokenUsage } from "./types";
+
+export interface HarnessOptions {
+  tools?: ToolRegistry;
+  sessions?: SessionStore;
+  prompt?: SystemPromptOptions;
+  maxToolSteps?: number;
+  maxOutputTokens?: number;
+  /** Stops the loop once this turn's estimated spend passes the cap (protects against runaway loops). */
+  maxCostPerTurnUsd?: number;
+  historyTurns?: number;
+  usdToPhp?: number;
+}
+
+export class RealEstateHarness {
+  readonly tools: ToolRegistry;
+  private readonly sessions: SessionStore;
+  private readonly system: string;
+  private readonly opts: Required<Pick<HarnessOptions, "maxToolSteps" | "maxOutputTokens" | "maxCostPerTurnUsd" | "historyTurns" | "usdToPhp">>;
+
+  constructor(options: HarnessOptions = {}) {
+    this.tools = options.tools ?? new ToolRegistry();
+    this.sessions = options.sessions ?? new InMemorySessionStore();
+    this.system = buildSystemPrompt(options.prompt);
+    this.opts = {
+      maxToolSteps: options.maxToolSteps ?? 8,
+      maxOutputTokens: options.maxOutputTokens ?? 1500,
+      maxCostPerTurnUsd: options.maxCostPerTurnUsd ?? 0.25,
+      historyTurns: options.historyTurns ?? 12,
+      usdToPhp: options.usdToPhp ?? 63.5,
+    };
+  }
+
+  get systemPrompt(): string {
+    return this.system;
+  }
+
+  /**
+   * Runs one user turn against the given provider.
+   * Side effects: reads and writes the session history in the SessionStore.
+   */
+  async chat(provider: ModelProvider, userMessage: string, sessionId: string = randomUUID()): Promise<HarnessTurnResult> {
+    const warnings = screenUserInput(userMessage);
+    const history = trimHistory(await this.sessions.get(sessionId), this.opts.historyTurns);
+    const messages: ChatMessage[] = [...history, { role: "user", content: userMessage }];
+    const usage: TokenUsage = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
+    const toolTrace: HarnessTurnResult["toolTrace"] = [];
+    let reply = "";
+    let steps = 0;
+
+    while (steps < this.opts.maxToolSteps) {
+      steps++;
+      const res = await provider.complete({ system: this.system, messages, tools: this.tools.definitions(), maxOutputTokens: this.opts.maxOutputTokens });
+      usage.inputTokens += res.usage.inputTokens;
+      usage.cachedInputTokens += res.usage.cachedInputTokens;
+      usage.outputTokens += res.usage.outputTokens;
+      messages.push({ role: "assistant", content: res.text, toolCalls: res.toolCalls.length ? res.toolCalls : undefined });
+      reply = res.text;
+      if (!res.toolCalls.length) break;
+
+      for (const call of res.toolCalls) {
+        const { result } = await this.tools.execute(call.name, call.arguments);
+        toolTrace.push({ name: call.name, arguments: call.arguments, result });
+        messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: JSON.stringify(result) });
+      }
+
+      const spent = estimateCostUsd(provider.model, usage);
+      if (spent !== null && spent > this.opts.maxCostPerTurnUsd) {
+        warnings.push(`Stopped early: this turn reached the US$${this.opts.maxCostPerTurnUsd} spending cap.`);
+        reply ||= "I stopped before finishing because this request hit the spending cap. Please narrow the question.";
+        break;
+      }
+      if (steps === this.opts.maxToolSteps) {
+        warnings.push("Stopped early: maximum tool steps reached.");
+        reply ||= "I couldn't finish within the step limit. Please try a narrower question.";
+      }
+    }
+
+    // Close the history on an assistant message so the next turn starts cleanly.
+    const last = messages[messages.length - 1];
+    if (last?.role === "tool") messages.push({ role: "assistant", content: reply });
+
+    warnings.push(...reviewReply(reply, toolTrace));
+    await this.sessions.save(sessionId, messages);
+    const usd = estimateCostUsd(provider.model, usage);
+    return {
+      sessionId,
+      reply,
+      provider: provider.id,
+      model: provider.model,
+      toolTrace,
+      usage,
+      estimatedCostUsd: usd,
+      estimatedCostPhp: usd === null ? null : Math.round(usd * this.opts.usdToPhp * 100) / 100,
+      steps,
+      warnings,
+    };
+  }
+
+  /** Runs a calculator or lookup directly, without the AI (zero token cost). */
+  runTool(name: string, args: Record<string, unknown>) {
+    return this.tools.execute(name, args);
+  }
+
+  resetSession(sessionId: string): Promise<void> {
+    return this.sessions.clear(sessionId);
+  }
+}

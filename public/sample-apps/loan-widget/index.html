@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Loan Widget (sample third-party app)</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="/sdk/grid.js"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <p class="tag">Sample third-party app · runs sandboxed</p>
+    <h1>Quick loan check</h1>
+    <form id="f">
+      <label>Property price (₱) <input id="price" type="number" value="7600000" min="1" required /></label>
+      <label>Down payment (%) <input id="down" type="number" value="20" min="0" max="100" required /></label>
+      <label>Interest (% per year) <input id="rate" type="number" value="7" step="0.01" min="0" required /></label>
+      <label>Term (years) <input id="years" type="number" value="20" min="1" max="30" required /></label>
+      <button type="submit">Calculate (asks for “tools”)</button>
+      <button type="button" id="ask">Explain with AI (asks for “ai”)</button>
+    </form>
+    <output id="out" aria-live="polite"></output>
+    <p class="small">This page uses only <code>grid.js</code>. It cannot read your session, files or listings unless you allow it.</p>
+  </main>
+</body>
+</html>

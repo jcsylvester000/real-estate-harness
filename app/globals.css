@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+/* GRID brand tokens (BRD v2.0 section 12; prototype css/grid.css).
+   Contrast checked to WCAG 2.2 AA in tests/unit/contrast.test.ts:
+   - text on cream: navy 16.5:1, muted 5.7:1, bronze-ink 5.3:1
+   - primary button: navy on bronze 5.6:1 (white on bronze is only 3.1:1, so it is not used)
+   - gold on navy 9.6:1 */
+@theme {
+  --color-navy: #0e192f;
+  --color-navy-2: #152447;
+  --color-panel: #1c335e;
+  --color-bronze: #be8562;
+  --color-bronze-ink: #8e5b3b;
+  --color-bronze-soft: #f6ece4;
+  --color-gold: #e2b985;
+  --color-cream: #fbf8f3;
+  --color-sand: #f4f1ec;
+  --color-ink: #0e192f;
+  --color-ink-2: #243447;
+  --color-muted: #5b6472;
+  --color-line: #e3ddd3;
+  --color-line-2: #d2d2d2;
+  --color-mist: #c4d0e4;
+  --color-ok: #2a744a;
+  --color-ok-soft: #e2f2e8;
+  --color-warn: #94590a;
+  --color-warn-soft: #fbefd9;
+  --color-bad: #b23a3a;
+  --color-bad-soft: #f8e3e3;
+  --color-info: #1c5fa8;
+  --color-info-soft: #e3eefa;
+  --color-na: #5f6b78;
+  --color-na-soft: #eceff2;
+
+  --font-display: var(--font-cantata), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-poppins), "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --radius-card: 14px;
+  --shadow-card: 0 1px 2px rgb(14 25 47 / 0.06), 0 8px 24px -12px rgb(14 25 47 / 0.18);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    
+    
+  }
+  body {
+    @apply bg-cream text-ink font-sans antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display font-normal text-balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-panel);
+    outline-offset: 2px;
+  }
+  a {
+    @apply text-bronze-ink underline-offset-2;
+  }
+  /* Links inside running text are underlined so they are not told apart by colour alone (WCAG 1.4.1). */
+  :where(p, li, dd, td, label, figcaption, small) a {
+    text-decoration: underline;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    @apply font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-bronze-ink;
+  }
+  .btn {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-bronze text-navy hover:bg-gold;
+  }
+  .btn-dark {
+    @apply bg-navy text-cream hover:bg-panel;
+  }
+  .btn-ghost {
+    @apply border border-line bg-white text-ink hover:bg-sand;
+  }
+  .btn-danger {
+    @apply bg-bad text-white hover:opacity-90;
+  }
+  .field {
+    @apply block w-full rounded-lg border border-line-2 bg-white px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-panel focus:outline-none;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-ink-2;
+  }
+  .card {
+    @apply rounded-[var(--radius-card)] border border-line bg-white shadow-[var(--shadow-card)];
+  }
+}
+
+/* Desktop wallpaper presets (chosen in Settings, stored per user in the desktop's kv). */
+.wall-grid {
+  background-color: #0e192f;
+  background-image:
+    radial-gradient(70rem 40rem at 80% -10%, rgb(226 185 133 / 0.22), transparent 60%),
+    radial-gradient(50rem 30rem at -10% 110%, rgb(28 51 94 / 0.95), transparent 60%),
+    linear-gradient(rgb(255 255 255 / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.045) 1px, transparent 1px);
+  background-size: auto, auto, 56px 56px, 56px 56px;
+}
+.wall-dusk {
+  background: radial-gradient(60rem 40rem at 70% 20%, #be8562 0%, transparent 60%), linear-gradient(160deg, #152447 0%, #0e192f 55%, #3a2a2a 100%);
+}
+.wall-sand {
+  background: radial-gradient(50rem 30rem at 20% 10%, #fff 0%, transparent 60%), linear-gradient(180deg, #f4f1ec 0%, #e2b985 160%);
+}
+.wall-night {
+  background: #0b1222;
+}
+
+/* While a window is dragged or resized, iframes must not swallow the pointer. */
+.ga-dragging iframe {
+  pointer-events: none;
+}
+
+/* Built-in app pages (inside iframes) */
+.app-shell {
+  @apply flex h-dvh flex-col overflow-hidden bg-cream text-ink;
+}
+.md table {
+  @apply my-2 w-full border-collapse text-left text-[13px];
+}
+.md th,
+.md td {
+  @apply border-b border-line px-2 py-1.5 align-top;
+}
+.md th {
+  @apply bg-sand font-medium;
+}
+.md p {
+  @apply my-1.5 leading-relaxed;
+}
+.md ul,
+.md ol {
+  @apply my-1.5 pl-5;
+}
+.md ul {
+  @apply list-disc;
+}
+.md ol {
+  @apply list-decimal;
+}
+.md code {
+  @apply rounded bg-sand px-1 font-mono text-[12px];
+}
+.md pre {
+  @apply my-2 overflow-x-auto rounded-lg bg-navy p-3 font-mono text-[12px] text-cream;
+}
+.md h1,
+.md h2,
+.md h3 {
+  @apply mt-3 mb-1 font-sans font-semibold;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
