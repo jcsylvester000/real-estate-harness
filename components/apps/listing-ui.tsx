@@ -1,6 +1,6 @@
 "use client";
 /** Listing card and detail panel shared by Property Finder and Listings. */
-import { BedDouble, Calculator, Copy, Landmark, MapPin, Ruler, Sparkles, Star, X } from "lucide-react";
+import { BedDouble, Calculator, Copy, Landmark, MapPin, Ruler, Sparkles, Star, X, Clapperboard, Presentation } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { GridSDK, ListingCard, ListingDetail } from "@/lib/sdk/types";
 import { FEATURES, PURPOSES, TIER_LABEL, type LocationTier } from "@/lib/listings/analyze";
@@ -206,14 +206,20 @@ export function ListingDrawer({ grid, code, onClose, extraActions }: { grid: Gri
                     <button type="button" className="btn btn-ghost justify-start" onClick={() => openCalc("compute_acquisition_costs", { sellingPrice: l.price, lguType: l.province === "Metro Manila" ? "city_or_metro_manila" : "province" })}>
                       <Landmark size={15} aria-hidden /> Taxes &amp; closing costs
                     </button>
-                    <button type="button" className="btn btn-ghost justify-start" onClick={() => openCalc("compute_loan_amortization", { propertyPrice: l.price, downPaymentPercent: 20, annualInterestRatePercent: 7, termYears: 20, lender: "bank" })}>
-                      <Calculator size={15} aria-hidden /> Monthly loan payment
+                    <button type="button" className="btn btn-ghost justify-start" onClick={() => openCalc("mortgage", { propertyPrice: l.price })}>
+                      <Calculator size={15} aria-hidden /> Compare home loans (Pag-IBIG, banks)
                     </button>
                     <button type="button" className="btn btn-ghost justify-start" onClick={() => openCalc("compute_commission", { salePrice: l.price, commissionRatePercent: 5 })}>
                       <Calculator size={15} aria-hidden /> Commission
                     </button>
                   </>
                 )}
+                <button type="button" className="btn btn-ghost justify-start" data-make-teaser onClick={() => grid.ui.openApp("property-teaser", { code: l.code, kind: "deck" })}>
+                  <Presentation size={15} aria-hidden /> Make a presentation
+                </button>
+                <button type="button" className="btn btn-ghost justify-start" onClick={() => grid.ui.openApp("property-teaser", { code: l.code, kind: "trailer" })}>
+                  <Clapperboard size={15} aria-hidden /> Make a teaser trailer
+                </button>
                 {grid.ai.available && (
                   <button type="button" className="btn btn-ghost justify-start" onClick={() => grid.ui.openApp("deal-desk", { prompt: `Tell me about listing ${l.code} and what a buyer should check.` })}>
                     <Sparkles size={15} aria-hidden /> Ask Deal Desk AI about this listing

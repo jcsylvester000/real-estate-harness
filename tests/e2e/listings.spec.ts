@@ -65,6 +65,6 @@ test("Settings explains what works without AI", async ({ page }) => {
   await signIn(page);
   await page.locator('[data-ai-status="off"]').click();
   const st = page.locator('[data-window="settings"] iframe').contentFrame();
-  await expect(st.getByText("No AI key yet: Query Engine mode")).toBeVisible();
-  await expect(st.getByText("What works without AI")).toBeVisible();
+  await expect(st.getByText("Default: Query Engine (no AI)")).toBeVisible();
+  await expect(st.getByRole("form", { name: "Add an AI key" })).toBeVisible();
 });

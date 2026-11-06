@@ -526,11 +526,11 @@ export function Desktop({ user, initialApps, initialWallpaper, initialIcons, ai 
           type="button"
           data-ai-status={ai.realAi ? "ready" : "off"}
           onClick={() => openApp("settings", { tab: "ai" })}
-          title={ai.realAi ? `AI connected: ${ai.providers.join(", ")}` : "No AI key yet. Everything except free-form AI chat works. Click for details."}
+          title={ai.realAi ? `No AI by default. AI keys ready: ${ai.providers.join(", ")} (pick one in Deal Desk).` : "No AI by default. Add your own AI key in Settings → AI setup. Click for details."}
           className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-white/15 px-2.5 text-[11px] hover:bg-white/10"
         >
           <span className={`size-2 rounded-full ${ai.realAi ? "bg-[#4ade80]" : "bg-gold"}`} aria-hidden />
-          <span className="hidden md:inline">{ai.realAi ? `AI: ${ai.providers[0]}` : "Query Engine (no AI)"}</span>
+          <span className="hidden md:inline">{ai.realAi ? `Query Engine · AI key ready` : "Query Engine (no AI)"}</span>
           <span className="sr-only md:hidden">{ai.realAi ? "AI connected" : "No AI key: Query Engine mode"}</span>
         </button>
         <time className="hidden px-2 text-right text-xs text-mist sm:block" aria-label="Manila time">

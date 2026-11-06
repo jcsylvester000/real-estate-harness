@@ -93,12 +93,13 @@ export function DesktopIcons({ apps, layout, update, onOpen }: { apps: AppInfo[]
   const onDown = (e: React.PointerEvent, id: string) => {
     if (e.button !== 0) return;
     const p = positions[id]!;
+    // Capture now, so a fast drag that leaves the icon still reaches it.
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     setDrag({ id, x: p.x, y: p.y, dx: e.clientX - p.x, dy: e.clientY - p.y, moved: false, startX: e.clientX, startY: e.clientY });
   };
   const onMove = (e: React.PointerEvent) => {
     if (!drag) return;
     const moved = drag.moved || Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 5;
-    if (moved && !drag.moved) (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     setDrag({ ...drag, moved, x: e.clientX - drag.dx, y: e.clientY - drag.dy });
   };
   const onUp = () => {

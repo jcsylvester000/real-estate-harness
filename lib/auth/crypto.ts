@@ -39,3 +39,22 @@ export function unseal<T>(token: string | undefined): T | null {
     return null;
   }
 }
+
+/** Encrypts a secret at rest (AI keys) with its own derived key: base64url(iv | tag | ciphertext). */
+const secretKey = () => Buffer.from(hkdfSync("sha256", appSecret(), "grid-secrets-salt", "grid-ai-keys-v1", 32));
+export function encryptSecret(plain: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", secretKey(), iv);
+  const body = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64url");
+}
+export function decryptSecret(token: string): string | null {
+  try {
+    const raw = Buffer.from(token, "base64url");
+    const d = createDecipheriv("aes-256-gcm", secretKey(), raw.subarray(0, 12));
+    d.setAuthTag(raw.subarray(12, 28));
+    return Buffer.concat([d.update(raw.subarray(28)), d.final()]).toString("utf8");
+  } catch {
+    return null;
+  }
+}

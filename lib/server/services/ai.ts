@@ -19,6 +19,7 @@ import { chatSessions, usageEvents } from "@/lib/db/schema";
 import "./listings"; // registers the listings index as the harness inventory
 import "./lenders"; // registers the editable lender rates for compare_mortgage_lenders
 import { clearEngineState, engineTurn } from "./engine";
+import { MINE, listKeys, resolveKey } from "./ai-keys";
 import { DriverError, invalid, notFound } from "../errors";
 
 
@@ -79,38 +80,52 @@ export async function spentTodayPhp(userId: string) {
   return Number(r?.php ?? 0);
 }
 
-/** Whether a real AI model is set up (the Demo provider does not count). */
-export function aiStatus() {
-  const list = providerList();
+/** Whether a real AI model is available to this person (their own key, or a team key on the server). */
+export async function aiStatus(userId?: string) {
+  const list = await providerList(userId);
   const real = list.filter((p) => p.id !== "demo" && p.configured);
   return { realAi: real.length > 0, demo: list.some((p) => p.id === "demo" && p.configured), providers: list.map(({ id, label, configured }) => ({ id, label, configured })) };
 }
 
-export function providerList() {
-  const cfg = harnessConfig();
-  return (Object.keys(cfg.providers) as ProviderId[])
-    .filter((id) => id !== "demo" || cfg.demoEnabled)
-    .map((id) => ({
-      id,
-      label: { anthropic: "Claude", openai: cfg.openaiLabel, gemini: "Gemini", demo: "Query Engine (no AI)" }[id],
-      configured: id === "demo" ? cfg.demoEnabled : Boolean(cfg.providers[id].apiKey),
-      models: cfg.providers[id].models,
-      isDefault: id === cfg.defaultProvider,
-    }));
+export interface ProviderOption {
+  id: string;
+  label: string;
+  configured: boolean;
+  models: Record<ModelTier, string>;
+  /** Grid Agentic defaults to no AI: the Query Engine is the default whenever it is enabled. */
+  isDefault: boolean;
+  /** "engine" (no AI) · "mine" (the person's own key) · "team" (server key) */
+  source: "engine" | "mine" | "team";
 }
 
-/** Picks the requested provider, else the default when it has a key, else the first configured one. */
-function pickProvider(requested?: string): ProviderId {
-  const list = providerList();
-  if (requested) {
-    const p = list.find((x) => x.id === requested);
-    if (!p) throw invalid(`Unknown AI provider "${requested}".`);
-    if (!p.configured) throw new DriverError("provider_not_configured", `${p.label} has no API key yet. Add it to the server environment, or pick another provider.`, 400);
-    return p.id;
+/** Query Engine first (the default), then the person's own keys, then any team keys set on the server. */
+export async function providerList(userId?: string): Promise<ProviderOption[]> {
+  const cfg = harnessConfig();
+  const out: ProviderOption[] = [];
+  if (cfg.demoEnabled) out.push({ id: "demo", label: "Query Engine (no AI)", configured: true, models: cfg.providers.demo.models, isDefault: true, source: "engine" });
+  if (userId)
+    for (const k of await listKeys(userId))
+      out.push({ id: `${MINE}${k.provider}`, label: `My key · ${k.label.replace(/ \(.*\)$/, "")}`, configured: true, models: { balanced: k.model, budget: k.budgetModel || k.model }, isDefault: false, source: "mine" });
+  for (const id of ["anthropic", "openai", "gemini"] as const) {
+    if (!cfg.providers[id].apiKey) continue;
+    out.push({ id, label: `Team key · ${{ anthropic: "Claude", openai: cfg.openaiLabel, gemini: "Gemini" }[id]}`, configured: true, models: cfg.providers[id].models, isDefault: false, source: "team" });
   }
-  const def = list.find((x) => x.isDefault && x.configured) ?? list.find((x) => x.configured);
-  if (!def) throw new DriverError("provider_not_configured", "No AI provider is set up. Add an API key to the server environment.", 400);
-  return def.id;
+  if (!cfg.demoEnabled && out[0]) out[0].isDefault = true;
+  return out;
+}
+
+/** The requested provider, else the default (no AI). */
+async function pickProvider(userId: string, requested?: string) {
+  const list = await providerList(userId);
+  const id = requested || list.find((x) => x.isDefault)?.id;
+  const p = list.find((x) => x.id === id);
+  if (!p) {
+    if (requested?.startsWith(MINE) || ["anthropic", "openai", "gemini"].includes(requested ?? ""))
+      throw new DriverError("provider_not_configured", "That AI key is not set up. Add your key in Settings → AI setup, or use the Query Engine.", 400);
+    if (requested) throw invalid(`Unknown AI provider "${requested}".`);
+    throw new DriverError("provider_not_configured", "No AI provider is set up. Add your own key in Settings → AI setup.", 400);
+  }
+  return p;
 }
 
 export interface ChatInput {
@@ -127,7 +142,8 @@ export async function chat(userId: string, appId: string, input: ChatInput): Pro
   if (!message) throw invalid("Type a message first.");
   if (message.length > MAX_MESSAGE_CHARS) throw invalid(`Messages can be at most ${MAX_MESSAGE_CHARS} characters.`);
   const cfg = harnessConfig();
-  const providerId = pickProvider(input.provider);
+  const picked = await pickProvider(userId, input.provider);
+  const providerId = picked.id;
   const tier: ModelTier = input.tier === "budget" ? "budget" : "balanced";
 
   // No-AI Query Engine: rule-based, free, no daily cap.
@@ -143,7 +159,15 @@ export async function chat(userId: string, appId: string, input: ChatInput): Pro
   if (cfg.limits.dailyCapPhp > 0 && before >= cfg.limits.dailyCapPhp)
     throw new DriverError("daily_cap_reached", `You have used today's AI allowance (₱${cfg.limits.dailyCapPhp}). It resets at midnight Manila time; calculators still work.`, 429);
 
-  const provider = createProvider(providerId, cfg.providers[providerId], tier, undefined, { timeoutMs: cfg.limits.providerTimeoutMs, retries: 1 });
+  let provider;
+  if (picked.source === "mine") {
+    const k = await resolveKey(userId, providerId.slice(MINE.length));
+    if (!k) throw new DriverError("provider_not_configured", "Your saved key could not be read. Enter it again in Settings → AI setup.", 400);
+    provider = createProvider(k.engine, k.settings, tier, undefined, { timeoutMs: cfg.limits.providerTimeoutMs, retries: 1 });
+  } else {
+    const id = providerId as Exclude<ProviderId, "demo">;
+    provider = createProvider(id, cfg.providers[id], tier, undefined, { timeoutMs: cfg.limits.providerTimeoutMs, retries: 1 });
+  }
   const sessionId = input.sessionId && UUID.test(input.sessionId) ? input.sessionId : crypto.randomUUID();
   const harness = new RealEstateHarness({
     sessions: new PgSessionStore(userId, appId, message.slice(0, 60)),

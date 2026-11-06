@@ -17,6 +17,7 @@ a browser desktop, windows, iframe apps and an app SDK. No Puter code is used (P
 |---|---|
 | **Deal Desk AI** | Type **/** to pick a feature (search property, buyer matching, calculator, listings, lenders, notes, documents) and answer short follow-ups by clicking; or just ask. It predicts the next step ("Up next" chips, suggested commands, ghost-text completion). Ask about costs, loans, listings, buyer matches and your documents. With an AI key it uses Claude, OpenAI-compatible models (OpenRouter) or Gemini. **Without a key it uses the Query Engine** (below). It shows the calculations used and the cost in pesos, and saves conversations. Upload PDFs, Word files or photos with 📎. |
 | **Buyer Matching** | Describe the buyer (kind, place, budget, bedrooms, size, purpose, features) and set how much each criterion matters (must have / important / nice to have / ignore). Every listing gets a **match score from 1 to 10** with a "why this score" breakdown. Save buyers; saved buyers are scored against every listing automatically (two-way). |
+| **Property Teaser** | Design **presentations and teaser trailers** from 30 templates (20 decks, 10 trailers, landscape and vertical). Add your logo, brand colours and fonts, details, photos (upload, free web images, links), features and amenities. "Write it for me" turns your notes into a tagline, description and highlights without AI. Canva-style editing: text, shapes, icons, photos, snapping, animations. Export to **PowerPoint, PDF, Word, MP4 video** or PNG. See [docs/PROPERTY_TEASER.md](docs/PROPERTY_TEASER.md). |
 | **Calculators** | **Home loan (lenders):** compare Pag-IBIG and 13 banks/in-house financing, or pick one lender. Rates come from a researched, editable table (**Lender rates** tab, with sources and as-of dates). Also taxes and fees, loan payment, commission, Maceda refund and foreign-buyer rules. No AI, no cost. |
 | **Property Finder** | Type what the client wants ("2BR condo for rent in BGC under 60k") and get ranked matches from the listings index. **No AI needed.** |
 | **Listings** | Browse, add, edit and **import GRID CSV exports**. Each listing is analysed for matching (region, location tier, features, purposes, data completeness). |
@@ -27,6 +28,7 @@ a browser desktop, windows, iframe apps and an app SDK. No Puter code is used (P
 - **Permissions (the Puter model):** each app declares permissions. Built-in apps get what they declare. A third-party app runs sandboxed (opaque origin, no cookies). The user must allow each permission once.
 - **Desktop:** drag icons anywhere. Right-click the desktop to choose **Snap icons to grid** (drops swap places) or **Free icon placement**, or **Tidy up icons**; the layout is saved per user.
 - **Look and motion:** spotlight cards, glowing input, shimmer buttons, animated windows and menus (inspired by 21st.dev components); all motion turns off when the system asks for reduced motion.
+- **AI is off by default:** the default everywhere is the no-AI Query Engine. To use AI, each person adds their **own API key** in Settings → AI setup: Claude, OpenAI, OpenRouter, Gemini or any OpenAI-compatible service. Keys are tested before saving, encrypted on the server (AES-256-GCM from `APP_SECRET`) and never shown again. Then pick the key in Deal Desk's provider menu, or use Polish with AI in Property Teaser. Server-wide keys in `.env.local` still work as optional team keys.
 - **Works without AI:** with no key, the taskbar shows "Query Engine (no AI)" and every app works fully.
 - **AI cost control:** the harness caps tool steps and spend per turn. A per-person daily allowance in pesos (`GRID_DAILY_AI_CAP_PHP`) applies on top. Every turn is metered in `usage_events` (Query Engine turns at ₱0).
 
@@ -85,8 +87,8 @@ Any OpenRouter model with tool calling works, for example `anthropic/claude-haik
 
 | Command | What it does |
 |---|---|
-| `npm test` | 100 unit and integration tests (in-memory Postgres; no network) |
-| `npm run e2e` | 19 browser tests on a production build (`npm run build` first), including PDF and OCR uploads |
+| `npm test` | 160 unit and integration tests (in-memory Postgres; no network) |
+| `npm run e2e` | 22 browser tests on a production build (`npm run build` first), including PDF and OCR uploads |
 | `npm run projections:rebuild` | Rebuild the listings read models (CQRS) |
 | `npm run listings:import -- file.csv` | Import a GRID listings export |
 | `npm run lint` / `npm run typecheck` | Code checks |
@@ -123,6 +125,8 @@ lib/server/services/   pin, auth, ai (harness + metering + daily cap), engine, d
 lib/listings/          listings database (CQRS): schema, cqrs (command/query), projector, analyze, match (1–10 scoring),
                        buyers, import, places (gazetteer), kinds, inquiry parser, search
 lib/lenders/           lender rates (researched, editable) and the mortgage comparison
+lib/teaser/            Property Teaser: model, 30 templates, renderer, copywriter, amenities, icons
+components/teaser/     Property Teaser editor (stage, toolbar, panels) and exports (PPTX, PDF, DOCX, MP4)
 lib/engine/            Query Engine: lexicon (phrases + replies), classify, slots, text (summaries, facts), engine
 components/apps/doc-extract.ts   in-browser text extraction: pdf.js, mammoth, tesseract.js OCR
 lib/server/services/listings.ts   listings drivers + the harness listing tools' backend
@@ -134,6 +138,7 @@ public/sdk/grid.js     the app SDK
 ## Before production
 
 - Rotate the Neon password and the OpenRouter key that were shared in chat. Set `APP_SECRET`, `APP_ORIGIN` and your own `GRID_ACCESS_PIN` on Netlify.
+- Changing `APP_SECRET` makes saved AI keys unreadable; people then enter their key again.
 - Lender rates are a starting point researched on 6 Nov 2026; several are aggregator estimates (marked). Update them in Calculators → Lender rates when banks change rates.
 - Netlify functions stop at about 60 s. The harness defaults (6 tool steps, 25 s per model call) keep a turn inside that.
 - Import the real listings export. Demo listings have the source `demo`; delete them in Listings, or skip `db:seed`.

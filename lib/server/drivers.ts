@@ -12,6 +12,7 @@ import { ToolRegistry } from "@/lib/harness";
 import { runAs } from "@/lib/db/client";
 import { denied, DriverError, invalid } from "./errors";
 import * as ai from "./services/ai";
+import * as aiKeys from "./services/ai-keys";
 import * as appsSvc from "./services/apps";
 import * as auth from "./services/auth";
 import * as fs from "./services/fs";
@@ -20,6 +21,7 @@ import * as usage from "./services/usage";
 import * as listingsSvc from "./services/listings";
 import * as lendersSvc from "./services/lenders";
 import * as docsSvc from "./services/documents";
+import * as teaserSvc from "./services/teasers";
 import { listingForm } from "@/lib/listings/manage";
 import { searchInput } from "@/lib/listings/search";
 import { buyerInput } from "@/lib/listings/buyers";
@@ -58,8 +60,13 @@ export const METHODS = {
     schema: z.object({ message: z.string(), sessionId: z.string().max(100).optional(), provider: z.string().max(20).optional(), tier: z.enum(["balanced", "budget"]).optional() }),
     run: (a, x) => ai.chat(a.user.id, a.app.id, x),
   }),
-  "ai.providers": m({ schema: none, run: () => ai.providerList() }),
-  "ai.status": m({ schema: none, run: () => ai.aiStatus() }),
+  "ai.providers": m({ schema: none, run: (a) => ai.providerList(a.user.id) }),
+  "ai.status": m({ schema: none, run: (a) => ai.aiStatus(a.user.id) }),
+  // Your own AI keys (Settings). Keys go in, never come back out.
+  "ai.keys.list": m({ schema: none, run: (a) => aiKeys.listKeys(a.user.id) }),
+  "ai.keys.save": m({ kind: "command", schema: aiKeys.keyInput, run: (a, x) => aiKeys.saveKey(a.user.id, x) }),
+  "ai.keys.remove": m({ kind: "command", schema: z.object({ provider: z.string().max(40) }), run: (a, x) => aiKeys.removeKey(a.user.id, x.provider) }),
+  "ai.keys.test": m({ kind: "query", schema: aiKeys.keyInput, run: (a, x) => aiKeys.testKey(a.user.id, x) }),
   "ai.sessions": m({ schema: none, run: (a) => ai.listSessions(a.user.id, a.app.id) }),
   "ai.session": m({ schema: z.object({ sessionId: z.string() }), run: (a, x) => ai.getSession(a.user.id, a.app.id, x.sessionId) }),
   "ai.deleteSession": m({ schema: z.object({ sessionId: z.string() }), run: (a, x) => ai.deleteSession(a.user.id, a.app.id, x.sessionId) }),
@@ -82,6 +89,18 @@ export const METHODS = {
   "docs.search": m({ schema: z.object({ q: z.string().min(1).max(300), limit: z.number().int().min(1).max(20).optional() }), run: (a, x) => docsSvc.searchDocuments(a.user.id, x.q, { limit: x.limit }) }),
   "docs.add": m({ kind: "command", schema: docsSvc.docInput, run: (a, x) => docsSvc.addDocument(a.user.id, x) }),
   "docs.delete": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => docsSvc.deleteDocument(a.user.id, x.id) }),
+  // Property Teaser: projects, images (uploads, web search and import), Polish with AI (own key only).
+  "teaser.list": m({ schema: none, run: (a) => teaserSvc.listTeasers(a.user.id) }),
+  "teaser.get": m({ schema: z.object({ id: z.string().uuid() }), run: (a, x) => teaserSvc.getTeaser(a.user.id, x.id) }),
+  "teaser.save": m({ kind: "command", schema: teaserSvc.teaserInput, run: (a, x) => teaserSvc.saveTeaser(a.user.id, x) }),
+  "teaser.delete": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => teaserSvc.deleteTeaser(a.user.id, x.id) }),
+  "teaser.duplicate": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => teaserSvc.duplicateTeaser(a.user.id, x.id) }),
+  "teaser.assets": m({ schema: z.object({ source: z.enum(["upload", "logo", "web"]).optional() }), run: (a, x) => teaserSvc.listAssets(a.user.id, x.source) }),
+  "teaser.addAsset": m({ kind: "command", schema: teaserSvc.assetInput, run: (a, x) => teaserSvc.addAsset(a.user.id, x) }),
+  "teaser.deleteAsset": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => teaserSvc.deleteAsset(a.user.id, x.id) }),
+  "teaser.searchWeb": m({ schema: z.object({ q: z.string().max(120), page: z.number().int().min(1).max(20).optional() }), run: (_a, x) => teaserSvc.searchWebImages(x.q, x.page) }),
+  "teaser.importUrl": m({ kind: "command", schema: teaserSvc.importInput, run: (a, x) => teaserSvc.importFromUrl(a.user.id, x) }),
+  "teaser.polish": m({ kind: "command", schema: teaserSvc.polishInput, run: (a, x) => teaserSvc.polishWithAi(a.user.id, x) }),
   "lenders.list": m({ schema: none, run: () => lendersSvc.listLenders() }),
   "lenders.compare": m({
     schema: z.object({

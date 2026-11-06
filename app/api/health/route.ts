@@ -14,6 +14,6 @@ export async function GET() {
   } catch {
     db = false;
   }
-  const providers = Object.fromEntries(providerList().map((p) => [p.id, p.configured]));
+  const providers = Object.fromEntries((await providerList()).map((p) => [p.id, p.configured]));
   return NextResponse.json({ ok: db, db, providers, appSecret: (process.env.APP_SECRET ?? "").length >= 32 }, { status: db ? 200 : 503, headers: { "cache-control": "no-store" } });
 }

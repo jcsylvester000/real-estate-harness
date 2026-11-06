@@ -15,16 +15,13 @@ export default async function DesktopPage() {
   const session = await getCurrentSession();
   if (!session) return <PinGate />;
   const { user } = session;
-  const [apps, wallpaper, icons] = await Promise.all([listApps(user.role), kvGet(user.id, "desktop", "wallpaper"), kvGet(user.id, "desktop", "icons")]);
+  const [apps, wallpaper, icons, st] = await Promise.all([listApps(user.role), kvGet(user.id, "desktop", "wallpaper"), kvGet(user.id, "desktop", "icons"), aiStatus(user.id)]);
   return (
     <Desktop
       user={{ displayName: user.displayName, username: user.username, role: user.role, publicId: user.publicId }}
       initialApps={apps}
       initialIcons={parseLayout(icons)}
-      ai={(() => {
-        const st = aiStatus();
-        return { realAi: st.realAi, providers: st.providers.filter((p) => p.configured && p.id !== "demo").map((p) => p.label.split(" ")[0]!) };
-      })()}
+      ai={{ realAi: st.realAi, providers: st.providers.filter((p) => p.configured && p.id !== "demo").map((p) => p.label.replace(/^(My key|Team key) · /, "")) }}
       initialWallpaper={(WALLPAPERS as readonly string[]).includes(String(wallpaper)) ? String(wallpaper) : "wall-grid"}
     />
   );

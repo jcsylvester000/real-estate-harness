@@ -28,6 +28,45 @@ export interface ProviderInfo {
   configured: boolean;
   models: { balanced: string; budget: string };
   isDefault: boolean;
+  source?: "engine" | "mine" | "team";
+}
+export interface TeaserSummary {
+  id: string;
+  kind: string;
+  title: string;
+  templateId: string;
+  thumb: string;
+  updatedAt: string;
+}
+export interface TeaserAsset {
+  id: string;
+  src: string;
+  mime: string;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+  source: string;
+  name: string;
+  credit: string;
+  createdAt: string;
+}
+import type { WebImage } from "@/lib/server/services/teasers";
+export type { WebImage };
+export interface SavedAiKey {
+  provider: string;
+  label: string;
+  keyHint: string;
+  model: string;
+  budgetModel: string;
+  baseUrl: string;
+  updatedAt: string;
+}
+export interface AiKeyForm {
+  provider: string;
+  apiKey?: string;
+  model?: string;
+  budgetModel?: string;
+  baseUrl?: string;
 }
 export type ChatTurn = HarnessTurnResult & { spentTodayPhp: number; dailyCapPhp: number; /** Query Engine only. */ intent?: string | null; suggestions?: string[] };
 
@@ -48,6 +87,12 @@ export interface GridSDK {
     sessions(): Promise<{ id: string; title: string; updatedAt: string }[]>;
     session(id: string): Promise<{ id: string; messages: { role: "user" | "assistant"; content: string }[] }>;
     deleteSession(id: string): Promise<boolean>;
+    keys: {
+      list(): Promise<SavedAiKey[]>;
+      save(k: AiKeyForm): Promise<SavedAiKey>;
+      test(k: AiKeyForm): Promise<{ ok: boolean; model: string; ms: number; reply?: string; error?: string }>;
+      remove(provider: string): Promise<boolean>;
+    };
   };
   tools: { list(): Promise<ToolDefinition[]>; run<T = unknown>(name: string, args: Record<string, unknown>): Promise<T> };
   listings: {
@@ -70,6 +115,19 @@ export interface GridSDK {
     delete(path: string): Promise<{ deleted: number }>;
   };
   kv: { get<T = unknown>(key: string): Promise<T | null>; set(key: string, value: unknown): Promise<boolean>; del(key: string): Promise<boolean>; list(prefix?: string): Promise<string[]> };
+  teaser: {
+    list(): Promise<TeaserSummary[]>;
+    get(id: string): Promise<{ id: string; kind: string; title: string; templateId: string; data: Record<string, unknown>; updatedAt: string }>;
+    save(p: { id?: string; kind: "deck" | "trailer"; title: string; templateId: string; data: Record<string, unknown>; thumb?: string }): Promise<{ id: string; updatedAt: string }>;
+    delete(id: string): Promise<boolean>;
+    duplicate(id: string): Promise<{ id: string; updatedAt: string }>;
+    assets(source?: "upload" | "logo" | "web"): Promise<TeaserAsset[]>;
+    addAsset(a: { dataUrl: string; width?: number; height?: number; source?: "upload" | "logo"; name?: string }): Promise<TeaserAsset>;
+    deleteAsset(id: string): Promise<boolean>;
+    searchWeb(q: string, page?: number): Promise<{ results: WebImage[]; total: number }>;
+    importUrl(i: { url: string; credit?: string; name?: string }): Promise<TeaserAsset>;
+    polish(i: { text: string; details?: Record<string, unknown> }): Promise<{ taglines: string[]; short: string; long: string; highlights: string[]; provider: string; model: string }>;
+  };
   docs: {
     list(): Promise<DocSummary[]>;
     notes(): Promise<{ path: string; name: string; updatedAt: string; preview: string }[]>;

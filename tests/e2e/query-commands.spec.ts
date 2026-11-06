@@ -99,14 +99,14 @@ test("desktop icons snap to the grid or move freely", async ({ page }) => {
   const b2 = (await icon.boundingBox())!;
   await page.mouse.move(b2.x + 40, b2.y + 30);
   await page.mouse.down();
-  await page.mouse.move(b2.x + 120, b2.y - 30, { steps: 8 });
+  await page.mouse.move(640, 430, { steps: 8 });
   await page.mouse.up();
   const free = (await icon.boundingBox())!;
-  expect(free.x - b2.x).toBeCloseTo(80, -1);
-  expect(free.y - b2.y).toBeCloseTo(-60, -1);
+  expect(Math.abs(free.x - 600)).toBeLessThan(6);
+  expect(Math.abs(free.y - 400)).toBeLessThan(6);
 
   // Saved: still there after a reload. Then tidy up.
-  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(800); // the drop is saved right after release
   await page.reload();
   await expect(icon).toBeVisible();
   const reloaded = (await icon.boundingBox())!;

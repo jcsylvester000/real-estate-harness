@@ -202,6 +202,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
 
   const menu = useCommandMenu(grid, ctx, {
     send: (t) => sendRef.current(t),
+    open: (app, args) => grid.ui.openApp(app, args),
     fill: (t) => {
       setInput(t);
       requestAnimationFrame(() => boxRef.current?.focus());

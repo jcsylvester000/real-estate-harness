@@ -129,6 +129,15 @@
       deleteSession: function (sessionId) {
         return request("ai.deleteSession", { sessionId: sessionId });
       },
+      /** Your own AI keys (Settings app only). Keys are write-only: list() shows the last 4 characters. */
+      keys: {
+        list: c("ai.keys.list"),
+        save: c("ai.keys.save"),
+        test: c("ai.keys.test", LONG_TIMEOUT),
+        remove: function (provider) {
+          return request("ai.keys.remove", { provider: provider });
+        },
+      },
     },
 
     tools: {
@@ -216,6 +225,33 @@
       delete: function (id) {
         return request("docs.delete", { id: id });
       },
+    },
+
+    /** Property Teaser: decks and trailers, images (upload, web search, link import), Polish with AI. */
+    teaser: {
+      list: c("teaser.list"),
+      get: function (id) {
+        return request("teaser.get", { id: id });
+      },
+      save: c("teaser.save"),
+      delete: function (id) {
+        return request("teaser.delete", { id: id });
+      },
+      duplicate: function (id) {
+        return request("teaser.duplicate", { id: id });
+      },
+      assets: function (source) {
+        return request("teaser.assets", { source: source });
+      },
+      addAsset: c("teaser.addAsset", LONG_TIMEOUT),
+      deleteAsset: function (id) {
+        return request("teaser.deleteAsset", { id: id });
+      },
+      searchWeb: function (q, page) {
+        return request("teaser.searchWeb", { q: q, page: page }, LONG_TIMEOUT);
+      },
+      importUrl: c("teaser.importUrl", LONG_TIMEOUT),
+      polish: c("teaser.polish", LONG_TIMEOUT),
     },
 
     /** Home-loan lenders (Pag-IBIG, banks, in-house): rates, comparison, rate edits. */

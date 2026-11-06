@@ -50,6 +50,7 @@ Type `/` in Deal Desk (or press the / button, or a start card) and pick a featur
 | Listings | Search by name, building, place or code → Details · Matching buyers · Compare lenders · Taxes and fees | "Details on GRID_…", "Compare lenders for GRID_…, 20% down, 20 years" |
 | Lenders | Lender (with lowest published rate) → price → down payment → term | "BDO home loan for ₱5M, 20% down, 20 years" |
 | Notes | A note, or all notes → Summarize · Action items | "Summarize note …", "Action items in note …" |
+| Property Teaser | Presentation or trailer → a listing (or from scratch) | Opens Property Teaser with the listing's details filled in |
 | Documents | An upload → Summarize · Key dates and amounts · Ask a question (fills the box) | "Summarize …", "In …, what does it say about " |
 
 Keys: ↑ ↓ move, Enter or Tab pick, Backspace on an empty box goes back a step, Esc closes. Code: `components/apps/command-menu.tsx`.

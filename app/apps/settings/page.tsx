@@ -4,7 +4,7 @@ import { AppFrame } from "@/components/apps/app-frame";
 import { php } from "@/components/apps/result-view";
 import { errText } from "@/components/apps/use-grid";
 import { WALLPAPERS } from "@/lib/apps/wallpapers";
-import type { GridSDK, UsageAllRow, UsageMine } from "@/lib/sdk/types";
+import type { GridSDK, SavedAiKey, UsageAllRow, UsageMine } from "@/lib/sdk/types";
 
 const WALL_NAMES: Record<string, string> = { "wall-grid": "GRID blueprint", "wall-dusk": "Manila dusk", "wall-sand": "Sand", "wall-night": "Night" };
 
@@ -105,67 +105,179 @@ function Usage({ grid, all }: { grid: GridSDK; all: boolean }) {
   );
 }
 
+const KEY_PRESETS: Record<string, { label: string; model: string; budget: string; baseUrl: string; help: string; placeholder: string }> = {
+  openrouter: { label: "OpenRouter (many models, one key)", model: "openai/gpt-4o", budget: "openai/gpt-4o-mini", baseUrl: "https://openrouter.ai/api/v1", help: "openrouter.ai → Keys", placeholder: "sk-or-v1-…" },
+  anthropic: { label: "Claude (Anthropic)", model: "claude-sonnet-5-5", budget: "claude-haiku-5-5", baseUrl: "", help: "console.anthropic.com → API keys", placeholder: "sk-ant-…" },
+  openai: { label: "OpenAI (ChatGPT)", model: "gpt-6.1-sol", budget: "gpt-6-luna", baseUrl: "https://api.openai.com/v1", help: "platform.openai.com → API keys", placeholder: "sk-…" },
+  gemini: { label: "Google Gemini", model: "gemini-3.1-pro", budget: "gemini-3.5-flash-lite", baseUrl: "", help: "aistudio.google.com → Get API key", placeholder: "AIza…" },
+  custom: { label: "Other OpenAI-compatible (Groq, DeepSeek, Ollama…)", model: "", budget: "", baseUrl: "", help: "your provider's dashboard", placeholder: "API key" },
+};
+
 function AiSetup({ grid }: { grid: GridSDK }) {
-  const [st, setSt] = useState<{ realAi: boolean; providers: { id: string; label: string; configured: boolean }[] } | null>(null);
-  useEffect(() => {
-    grid.ai.status().then(setSt).catch(() => {});
-  }, [grid]);
-  const works = [
-    ["Property Finder", "Plain-language search of the listings index: “2BR condo for rent in BGC under 60k”."],
-    ["Listings", "Browse, edit and import GRID listing exports. The search index updates on every change."],
-    ["Calculators", "Taxes and fees, loan payments, commission, Maceda refunds, foreign ownership."],
-    ["Deal Desk (Query Engine)", "Answers listing, matching, loan, calculator and document questions without an AI, in English, Filipino or Taglish. Free-form writing needs a key."],
-    ["Files, Notes, App Center, Settings", "Everything works as normal."],
-  ];
+  const [keys, setKeys] = useState<SavedAiKey[]>([]);
+  const [team, setTeam] = useState<{ id: string; label: string }[]>([]);
+  const [form, setForm] = useState({ provider: "openrouter", apiKey: "", model: "", budgetModel: "", baseUrl: "" });
+  const [busy, setBusy] = useState<"" | "test" | "save">("");
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const preset = KEY_PRESETS[form.provider]!;
+  const saved = keys.find((k) => k.provider === form.provider);
+
+  const load = () => {
+    grid.ai.keys.list().then(setKeys).catch(() => {});
+    grid.ai
+      .status()
+      .then((st) => setTeam(st.providers.filter((p) => p.id !== "demo" && !p.id.startsWith("mine:") && p.configured)))
+      .catch(() => {});
+  };
+  useEffect(load, [grid]);
+
+  const pickProvider = (provider: string) => {
+    const k = keys.find((x) => x.provider === provider);
+    setForm({ provider, apiKey: "", model: k?.model ?? "", budgetModel: k?.budgetModel ?? "", baseUrl: k?.baseUrl ?? "" });
+    setResult(null);
+  };
+  const payload = () => ({ provider: form.provider, apiKey: form.apiKey.trim() || undefined, model: form.model.trim(), budgetModel: form.budgetModel.trim(), baseUrl: form.baseUrl.trim() });
+
+  const test = async () => {
+    setBusy("test");
+    setResult(null);
+    try {
+      const r = await grid.ai.keys.test(payload());
+      setResult(r.ok ? { ok: true, text: `It works: ${r.model} answered in ${(r.ms / 1000).toFixed(1)} s.` } : { ok: false, text: r.error ?? "The provider refused the request." });
+    } catch (e) {
+      setResult({ ok: false, text: errText(e) });
+    } finally {
+      setBusy("");
+    }
+  };
+  const save = async () => {
+    setBusy("save");
+    try {
+      await grid.ai.keys.save(payload());
+      setForm((f) => ({ ...f, apiKey: "" }));
+      setResult({ ok: true, text: "Saved. Pick it in Deal Desk's provider menu when you want AI; the Query Engine stays the default." });
+      load();
+    } catch (e) {
+      setResult({ ok: false, text: errText(e) });
+    } finally {
+      setBusy("");
+    }
+  };
+  const remove = async (k: SavedAiKey) => {
+    if (!(await grid.ui.confirm(`Remove your ${k.label} key?`, { danger: true, okLabel: "Remove" }))) return;
+    await grid.ai.keys.remove(k.provider).catch((e) => grid.ui.notify(errText(e), { tone: "bad" }));
+    load();
+  };
+
   return (
     <div className="max-w-2xl space-y-5">
-      <section className={`rounded-xl border p-4 ${st?.realAi ? "border-ok/30 bg-ok-soft" : "border-warn/30 bg-warn-soft"}`}>
-        <h2 className={`font-sans text-sm font-semibold ${st?.realAi ? "text-ok" : "text-warn"}`}>{st ? (st.realAi ? "AI is connected" : "No AI key yet: Query Engine mode") : "Checking…"}</h2>
+      <section className="rounded-xl border border-info/25 bg-info-soft/70 p-4">
+        <h2 className="font-sans text-sm font-semibold text-info">Default: Query Engine (no AI)</h2>
         <p className="mt-1 text-sm text-ink-2">
-          {st?.realAi
-            ? "Deal Desk can hold full conversations. It still answers only with GRID's calculators, rulebook and listings index."
-            : "Grid Agentic works without AI. Only Deal Desk's open conversation needs a key."}
+          Grid Agentic works fully without AI: search, matching, calculators, lenders, Property Teaser and the Deal Desk Query Engine. To use AI, add your own key below and pick it in Deal Desk&apos;s provider menu. You can switch back to the Query Engine any time.
         </p>
       </section>
-      {st && (
-        <table className="w-full text-left text-sm">
-          <caption className="mb-2 text-left text-xs text-muted">AI providers on this server (keys are never shown).</caption>
-          <tbody>
-            {st.providers
-              .filter((p) => p.id !== "demo")
-              .map((p) => (
-                <tr key={p.id} className="border-b border-line">
-                  <td className="py-2">{p.label}</td>
-                  <td className="py-2 text-right">{p.configured ? <span className="text-ok">Key set</span> : <span className="text-muted">No key</span>}</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      )}
+
       <section>
-        <h2 className="mb-2 font-sans text-sm font-semibold">What works without AI</h2>
-        <ul className="divide-y divide-line rounded-lg border border-line bg-white text-sm">
-          {works.map(([a, b]) => (
-            <li key={a} className="px-3 py-2">
-              <span className="font-medium">{a}</span>
-              <span className="block text-xs text-muted">{b}</span>
-            </li>
-          ))}
-        </ul>
+        <h2 className="mb-2 font-sans text-sm font-semibold">Your AI keys</h2>
+        {keys.length === 0 ? (
+          <p className="text-sm text-muted">No keys yet.</p>
+        ) : (
+          <ul className="divide-y divide-line rounded-xl border border-line bg-white text-sm" data-testid="saved-keys">
+            {keys.map((k) => (
+              <li key={k.provider} className="flex items-center gap-3 px-3 py-2">
+                <span className="size-2 rounded-full bg-ok" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">{k.label}</span>
+                  <span className="block text-xs text-muted">
+                    Key ••••{k.keyHint} · {k.model}
+                    {k.budgetModel && k.budgetModel !== k.model ? ` / ${k.budgetModel}` : ""}
+                  </span>
+                </span>
+                <button type="button" className="text-xs underline" onClick={() => pickProvider(k.provider)}>
+                  Edit
+                </button>
+                <button type="button" className="text-xs text-bad underline" onClick={() => remove(k)}>
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
-      <section className="text-sm">
-        <h2 className="mb-2 font-sans text-sm font-semibold">Turning AI on (admin)</h2>
-        <ol className="list-decimal space-y-1 pl-5">
-          <li>
-            Get an API key from Anthropic (Claude), OpenAI or Google (Gemini).
-          </li>
-          <li>
-            Add it to the server: <code className="rounded bg-sand px-1">ANTHROPIC_API_KEY</code>, <code className="rounded bg-sand px-1">OPENAI_API_KEY</code> or <code className="rounded bg-sand px-1">GEMINI_API_KEY</code> in <code className="rounded bg-sand px-1">.env.local</code>, or in Netlify&apos;s environment variables.
-          </li>
-          <li>Restart the app (or redeploy). The taskbar badge turns green.</li>
-        </ol>
-        <p className="mt-2 text-xs text-muted">Each person&apos;s AI spend is capped per day (GRID_DAILY_AI_CAP_PHP). Calculators and search are free.</p>
-      </section>
+
+      <form
+        className="card space-y-3 p-4"
+        aria-label="Add an AI key"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <h2 className="font-sans text-sm font-semibold">{saved ? `Update ${preset.label}` : "Add a key"}</h2>
+        <div>
+          <label htmlFor="k-provider" className="label">
+            AI provider
+          </label>
+          <select id="k-provider" className="field" value={form.provider} onChange={(e) => pickProvider(e.target.value)}>
+            {Object.entries(KEY_PRESETS).map(([id, p]) => (
+              <option key={id} value={id}>
+                {p.label}
+                {keys.some((k) => k.provider === id) ? " (saved)" : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="k-key" className="label">
+            API key {saved && <span className="font-normal text-muted">(leave empty to keep ••••{saved.keyHint})</span>}
+          </label>
+          <input id="k-key" className="field font-mono" type="password" autoComplete="off" spellCheck={false} placeholder={preset.placeholder} value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
+          <p className="mt-1 text-xs text-muted">Get one at {preset.help}. Usage is billed by your provider to your account.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="k-model" className="label">
+              Model
+            </label>
+            <input id="k-model" className="field" placeholder={preset.model || "model name"} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
+          </div>
+          <div>
+            <label htmlFor="k-budget" className="label">
+              Budget model (optional)
+            </label>
+            <input id="k-budget" className="field" placeholder={preset.budget || "cheaper model"} value={form.budgetModel} onChange={(e) => setForm({ ...form, budgetModel: e.target.value })} />
+          </div>
+        </div>
+        {(form.provider === "custom" || form.provider === "openrouter" || form.provider === "openai") && (
+          <div>
+            <label htmlFor="k-url" className="label">
+              Base URL {form.provider !== "custom" && <span className="font-normal text-muted">(optional)</span>}
+            </label>
+            <input id="k-url" className="field" placeholder={preset.baseUrl || "https://api.groq.com/openai/v1"} value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} />
+          </div>
+        )}
+        {result && (
+          <p role="status" className={`rounded-lg px-3 py-2 text-sm ${result.ok ? "bg-ok-soft text-ok" : "bg-bad-soft text-bad"}`}>
+            {result.text}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn btn-ghost" disabled={!!busy} onClick={test}>
+            {busy === "test" ? "Testing…" : "Test connection"}
+          </button>
+          <button type="submit" className="btn btn-dark" disabled={!!busy}>
+            {busy === "save" ? "Saving…" : saved ? "Save changes" : "Save key"}
+          </button>
+        </div>
+        <p className="text-[11px] text-muted">
+          Keys are encrypted on the server and never shown again. Everyone who unlocks this desktop with the team PIN shares the same account, so they can use these keys too. Daily AI spend per person is capped (GRID_DAILY_AI_CAP_PHP).
+        </p>
+      </form>
+
+      {team.length > 0 && (
+        <p className="text-xs text-muted">Team keys set by an admin on the server: {team.map((t) => t.label.replace("Team key · ", "")).join(", ")}.</p>
+      )}
     </div>
   );
 }

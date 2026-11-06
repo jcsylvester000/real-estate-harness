@@ -227,3 +227,64 @@ export const documentChunks = pgTable(
   },
   (t) => [index("doc_chunks_doc_idx").on(t.documentId, t.seq), index("doc_chunks_search_idx").using("gin", t.search), index("doc_chunks_user_idx").on(t.userId)],
 );
+
+/**
+ * A person's own AI provider keys (default is no AI). Keys are encrypted with AES-256-GCM using a key derived
+ * from APP_SECRET and are never sent back to the browser; only the last 4 characters are kept in clear.
+ */
+export const aiKeys = pgTable(
+  "ai_keys",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    /** anthropic | openai | openrouter | gemini | custom */
+    provider: text("provider").notNull(),
+    keyEnc: text("key_enc").notNull(),
+    keyHint: text("key_hint").notNull(),
+    baseUrl: text("base_url").notNull().default(""),
+    model: text("model").notNull(),
+    budgetModel: text("budget_model").notNull().default(""),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.provider] })],
+);
+
+/** Property Teaser projects (presentation decks and teaser trailers). The design is one JSON document. */
+export const teasers = pgTable(
+  "teasers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    templateId: text("template_id").notNull(),
+    data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+    /** Small JPEG data URL of the first slide, for the project list. */
+    thumb: text("thumb").notNull().default(""),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("teasers_user_idx").on(t.userId, t.updatedAt)],
+);
+
+/** Images used in teasers: uploads, logos and pictures imported from the web (with their credit). */
+export const teaserAssets = pgTable(
+  "teaser_assets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    mime: text("mime").notNull(),
+    /** base64 */
+    data: text("data").notNull(),
+    bytes: integer("bytes").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    /** upload | logo | web */
+    source: text("source").notNull().default("upload"),
+    name: text("name").notNull().default(""),
+    /** Credit line for web images (title, creator, licence). */
+    credit: text("credit").notNull().default(""),
+    sourceUrl: text("source_url").notNull().default(""),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("teaser_assets_user_idx").on(t.userId, t.createdAt)],
+);

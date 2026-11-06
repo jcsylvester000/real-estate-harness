@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   Building2,
   Calculator,
+  Clapperboard,
   ChevronRight,
   CornerDownLeft,
   FileText,
@@ -17,6 +18,7 @@ import {
   HelpCircle,
   Landmark,
   NotebookPen,
+  Presentation,
   Search,
   Sparkles,
   type LucideIcon,
@@ -35,7 +37,7 @@ export interface Opt {
   value?: string | number;
 }
 
-type Done = { send: string } | { fill: string };
+type Done = { send: string } | { fill: string } | { open: { app: string; args?: Record<string, unknown> } };
 export interface Step {
   title: string;
   placeholder: string;
@@ -84,7 +86,7 @@ const amountOpt = (q: string, verb = "Use"): Opt | null => {
 };
 const textOpt = (q: string, verb: string): Opt | null => (q.trim().length > 1 ? { id: `txt-${q}`, label: `${verb} “${q.trim()}”`, value: q.trim(), icon: CornerDownLeft } : null);
 
-export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t: string) => void; fill: (t: string) => void }) {
+export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t: string) => void; fill: (t: string) => void; open?: (app: string, args?: Record<string, unknown>) => void }) {
   const [stack, setStack] = useState<{ step: Step; crumb: string }[]>([]);
   const [rootOpen, setRootOpen] = useState(false);
   const [options, setOptionsRaw] = useState<Opt[]>([]);
@@ -198,11 +200,13 @@ export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t
             { id: "details", label: "Show details", icon: Building2 },
             { id: "buyers", label: "Which saved buyers match it", icon: Handshake },
             ...(lease ? [] : [{ id: "lenders", label: "Compare lenders for it", icon: Landmark }, { id: "costs", label: "Taxes and fees to buy it", icon: Calculator }]),
+            { id: "deck", label: "Make a presentation", icon: Presentation },
+            { id: "trailer", label: "Make a teaser trailer", icon: Clapperboard },
           ],
           q,
         ),
       pick: (o) =>
-        o.id === "details" ? { send: `Details on ${code}` } : o.id === "buyers" ? { send: `Which buyers match ${code}?` } : o.id === "lenders" ? termAndSend(`Compare lenders for ${code}`) : { send: `Cost to buy ${code}` },
+        o.id === "deck" || o.id === "trailer" ? { open: { app: "property-teaser", args: { code, kind: o.id } } } : o.id === "details" ? { send: `Details on ${code}` } : o.id === "buyers" ? { send: `Which buyers match ${code}?` } : o.id === "lenders" ? termAndSend(`Compare lenders for ${code}`) : { send: `Cost to buy ${code}` },
     }),
     [termAndSend],
   );
@@ -365,6 +369,23 @@ export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t
                 ),
         }),
       },
+      {
+        id: "teaser",
+        label: "Property Teaser",
+        hint: "Design a presentation or teaser trailer",
+        icon: Presentation,
+        keywords: "teaser presentation deck trailer video powerpoint brochure design",
+        start: () =>
+          choice("What do you want to make?", [["deck", "Presentation", "PowerPoint, PDF, Word"], ["trailer", "Teaser trailer", "Video and auto-play PowerPoint"]], (kind) => ({
+            title: "For which listing?",
+            placeholder: "Type a name, building, place or code",
+            load: async (q) => {
+              const r = await grid.listings.search(q.trim() ? { query: q.trim(), limit: 8 } : { sort: "newest", limit: 8 });
+              return [{ id: "blank", label: "Start from scratch", icon: Sparkles }, ...r.listings.map((l) => ({ id: l.code, label: l.name, hint: `${l.code} · ${l.city ?? l.province ?? ""}`, icon: Building2 }))];
+            },
+            pick: (o) => ({ open: { app: "property-teaser", args: o.id === "blank" ? { kind } : { code: o.id, kind } } }),
+          })),
+      },
       { id: "help", label: "What can you do?", hint: "Examples of everything Deal Desk answers", icon: HelpCircle, keywords: "help examples", start: () => ({ send: "What can you do?" }) },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -465,6 +486,11 @@ export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t
       if ("send" in next) {
         close();
         done.send(next.send);
+        return "";
+      }
+      if ("open" in next) {
+        close();
+        done.open?.(next.open.app, next.open.args);
         return "";
       }
       if ("fill" in next) {

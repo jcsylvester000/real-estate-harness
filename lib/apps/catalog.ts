@@ -64,6 +64,18 @@ export const BUILTIN_APPS: AppInfo[] = [
     ai: "none",
   },
   {
+    id: "property-teaser",
+    name: "Property Teaser",
+    description: "Design presentations and teaser trailers for a property. Export to PowerPoint, PDF, Word or video.",
+    icon: "presentation",
+    url: "/apps/property-teaser",
+    kind: "builtin",
+    permissions: ["teaser", "listings.read", "fs.write", "ai"],
+    width: 1280,
+    height: 800,
+    ai: "optional",
+  },
+  {
     id: "calculators",
     name: "Calculators",
     description: "Taxes, loans, commission, Maceda and foreign ownership. No AI, no cost.",

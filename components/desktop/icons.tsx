@@ -8,6 +8,7 @@ import {
   Puzzle,
   Search,
   Handshake,
+  Presentation,
   Settings,
   Sparkles,
   type LucideIcon,
@@ -24,6 +25,7 @@ const ICONS: Record<string, LucideIcon> = {
   puzzle: Puzzle,
   search: Search,
   handshake: Handshake,
+  presentation: Presentation,
   app: AppWindow,
 };
 
@@ -38,6 +40,7 @@ const TILES: Record<string, string> = {
   settings: "bg-mist text-navy",
   search: "bg-ok text-white",
   handshake: "bg-[#7c3a5b] text-white",
+  presentation: "bg-gradient-to-br from-[#f28c28] to-[#be4b2a] text-white",
 };
 
 export const ICON_KEYS = Object.keys(ICONS);
