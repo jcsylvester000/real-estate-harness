@@ -212,7 +212,14 @@ function AppCenter({ grid }: { grid: GridSDK }) {
                         <p className="text-xs text-muted">{a.description}</p>
                       </div>
                     </div>
-                    <p className="mt-3 text-[11px] text-muted">Can ask for: {a.permissions.length ? a.permissions.join(", ") : "nothing"}</p>
+                    <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+                      {a.kind === "builtin" && (
+                        <span className={`rounded px-1.5 py-0.5 ${a.ai === "optional" ? "bg-info-soft text-info" : a.ai === "required" ? "bg-warn-soft text-warn" : "bg-ok-soft text-ok"}`}>
+                          {a.ai === "optional" ? "Better with AI, works without" : a.ai === "required" ? "Needs an AI key" : "Works without AI"}
+                        </span>
+                      )}
+                      Can ask for: {a.permissions.length ? a.permissions.join(", ") : "nothing"}
+                    </p>
                     {a.kind === "external" && (
                       <div className="mt-2 space-y-1">
                         {mine.length === 0 && <p className="text-xs text-muted">You have not allowed anything yet.</p>}

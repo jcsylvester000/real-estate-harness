@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   NotebookPen,
   Puzzle,
+  Search,
   Settings,
   Sparkles,
   type LucideIcon,
@@ -20,6 +21,7 @@ const ICONS: Record<string, LucideIcon> = {
   grid: LayoutGrid,
   settings: Settings,
   puzzle: Puzzle,
+  search: Search,
   app: AppWindow,
 };
 
@@ -32,6 +34,7 @@ const TILES: Record<string, string> = {
   notebook: "bg-cream text-navy",
   grid: "bg-navy-2 text-gold",
   settings: "bg-mist text-navy",
+  search: "bg-ok text-white",
 };
 
 export const ICON_KEYS = Object.keys(ICONS);

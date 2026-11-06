@@ -12,7 +12,8 @@ import { getCurrentSession, isSameOrigin } from "@/lib/server/session";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const MAX_BODY = 2 * 1024 * 1024;
+// Listing CSV imports are the largest calls; Netlify functions accept about 6 MB per request.
+const MAX_BODY = 6 * 1024 * 1024;
 const fail = (code: string, message: string, status: number) =>
   NextResponse.json({ ok: false, error: { code, message } }, { status, headers: { "cache-control": "no-store" } });
 
@@ -23,11 +24,11 @@ export async function POST(req: Request) {
   if (session.user.mustChangePassword) return fail("password_change_required", "Change your password first.", 403);
 
   const len = Number(req.headers.get("content-length") ?? 0);
-  if (len > MAX_BODY) return fail("too_large", "Request is too large (2 MB max).", 413);
+  if (len > MAX_BODY) return fail("too_large", "Request is too large (6 MB max).", 413);
   let body: { method?: unknown; params?: unknown };
   try {
     const text = await req.text();
-    if (text.length > MAX_BODY) return fail("too_large", "Request is too large (2 MB max).", 413);
+    if (text.length > MAX_BODY) return fail("too_large", "Request is too large (6 MB max).", 413);
     body = JSON.parse(text);
   } catch {
     return fail("invalid_json", "Body must be JSON.", 400);
@@ -43,7 +44,8 @@ export async function POST(req: Request) {
   } catch (err) {
     if (err instanceof DriverError) return fail(err.code, err.message, err.status);
     const message = err instanceof Error ? err.message : String(err);
-    console.error(JSON.stringify({ event: "driver_error", method: body.method, app: appId, message: message.slice(0, 300) }));
+    const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined;
+    console.error(JSON.stringify({ event: "driver_error", method: body.method, app: appId, message: message.slice(0, 300), cause: cause?.slice(0, 300) }));
     // Provider errors (AI API down, timeouts) are safe to show in short form; anything else stays generic.
     if (/^(Provider returned HTTP|Network error|No API key)/.test(message)) return fail("provider_error", message.slice(0, 200), 502);
     return fail("server_error", "Something went wrong. Try again.", 500);

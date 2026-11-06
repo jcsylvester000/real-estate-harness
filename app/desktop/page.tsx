@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Desktop } from "@/components/desktop/desktop";
 import { WALLPAPERS } from "@/lib/apps/wallpapers";
+import { aiStatus } from "@/lib/server/services/ai";
 import { listApps } from "@/lib/server/services/apps";
 import { kvGet } from "@/lib/server/services/kv";
 import { requireUser } from "@/lib/server/session";
@@ -15,6 +16,10 @@ export default async function DesktopPage() {
     <Desktop
       user={{ displayName: user.displayName, username: user.username, role: user.role, publicId: user.publicId }}
       initialApps={apps}
+      ai={(() => {
+        const st = aiStatus();
+        return { realAi: st.realAi, providers: st.providers.filter((p) => p.configured && p.id !== "demo").map((p) => p.label.split(" ")[0]!) };
+      })()}
       initialWallpaper={(WALLPAPERS as readonly string[]).includes(String(wallpaper)) ? String(wallpaper) : "wall-grid"}
     />
   );

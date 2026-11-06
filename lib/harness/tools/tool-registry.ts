@@ -7,7 +7,7 @@ import { computeCommissionTool } from "./compute-commission";
 import { computeLoanAmortizationTool } from "./compute-loan-amortization";
 import { computeMacedaRefundTool } from "./compute-maceda-refund";
 import { getDocumentChecklistTool, getRuleTopicTool } from "./lookup-tools";
-import { searchListingsTool } from "./search-listings";
+import { getListingIndexTool, getListingTool, searchListingsTool } from "./search-listings";
 import { ToolArgumentError, validateArguments, type HarnessTool } from "./tool-types";
 
 export class ToolRegistry {
@@ -53,6 +53,8 @@ export const DEFAULT_TOOLS: HarnessTool<any>[] = [
   computeMacedaRefundTool,
   checkForeignOwnershipTool,
   searchListingsTool,
+  getListingIndexTool,
+  getListingTool,
   getDocumentChecklistTool,
   getRuleTopicTool,
 ];

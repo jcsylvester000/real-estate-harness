@@ -16,7 +16,9 @@ import * as auth from "./services/auth";
 import * as fs from "./services/fs";
 import * as kvSvc from "./services/kv";
 import * as usage from "./services/usage";
-import { deleteListing, getListing, listingInput, saveListing, searchListingRows } from "./stores/listings";
+import * as listingsSvc from "./services/listings";
+import { listingForm } from "@/lib/listings/manage";
+import { searchInput } from "@/lib/listings/search";
 
 export interface Actor {
   user: auth.PublicUser;
@@ -50,6 +52,7 @@ export const METHODS = {
     run: (a, x) => ai.chat(a.user.id, a.app.id, x),
   }),
   "ai.providers": m({ schema: none, run: () => ai.providerList() }),
+  "ai.status": m({ schema: none, run: () => ai.aiStatus() }),
   "ai.sessions": m({ schema: none, run: (a) => ai.listSessions(a.user.id, a.app.id) }),
   "ai.session": m({ schema: z.object({ sessionId: z.string() }), run: (a, x) => ai.getSession(a.user.id, a.app.id, x.sessionId) }),
   "ai.deleteSession": m({ schema: z.object({ sessionId: z.string() }), run: (a, x) => ai.deleteSession(a.user.id, a.app.id, x.sessionId) }),
@@ -65,24 +68,24 @@ export const METHODS = {
     },
   }),
 
-  "listings.search": m({
-    schema: z.object({
-      q: z.string().max(100).optional(),
-      city: z.string().max(60).optional(),
-      propertyType: z.string().max(30).optional(),
-      status: z.array(z.string().max(20)).max(5).optional(),
-      minPrice: z.number().optional(),
-      maxPrice: z.number().optional(),
-      minBedrooms: z.number().int().optional(),
-      foreignEligibleOnly: z.boolean().optional(),
-      limit: z.number().int().min(1).max(200).optional(),
-      offset: z.number().int().min(0).max(100_000).optional(),
-    }),
-    run: (_a, x) => searchListingRows(x),
+  "listings.search": m({ schema: searchInput, run: (_a, x) => listingsSvc.search(x) }),
+  "listings.ask": m({
+    schema: z.object({ text: z.string().trim().min(1).max(300), limit: z.number().int().min(1).max(50).optional(), offset: z.number().int().min(0).max(50_000).optional(), sort: z.enum(["relevance", "price_asc", "price_desc", "newest"]).optional() }),
+    run: (_a, x) => listingsSvc.ask(x.text, { limit: x.limit, offset: x.offset, sort: x.sort }),
   }),
-  "listings.get": m({ schema: z.object({ id: z.string().max(40) }), run: (_a, x) => getListing(x.id) }),
-  "listings.save": m({ schema: listingInput, roles: ["admin", "broker"], run: (a, x) => saveListing(x, a.user.id) }),
-  "listings.delete": m({ schema: z.object({ id: z.string().max(40) }), roles: ["admin", "broker"], run: (_a, x) => deleteListing(x.id) }),
+  "listings.facets": m({ schema: none, run: () => listingsSvc.index() }),
+  "listings.get": m({
+    schema: z.object({ code: z.string().max(60) }),
+    run: (a, x) => listingsSvc.get(x.code, { withContact: a.app.kind === "builtin" && (a.user.role === "admin" || a.user.role === "broker") }),
+  }),
+  "listings.save": m({ schema: listingForm, roles: ["admin", "broker"], run: (a, x) => listingsSvc.save(x, a.user) }),
+  "listings.delete": m({ schema: z.object({ code: z.string().max(60) }), roles: ["admin", "broker"], run: (_a, x) => listingsSvc.remove(x.code) }),
+  "listings.import": m({
+    schema: z.object({ fileName: z.string().max(200), csv: z.string().max(8 * 1024 * 1024) }),
+    roles: ["admin", "broker"],
+    run: (a, x) => listingsSvc.importCsv(x, a.user.id),
+  }),
+  "listings.imports": m({ schema: none, roles: ["admin", "broker"], run: () => listingsSvc.imports() }),
 
   "fs.list": m({ schema: z.object({ path: path.default("/") }), run: (a, x) => fs.list(a.user.id, x.path) }),
   "fs.stat": m({ schema: z.object({ path }), run: (a, x) => fs.stat(a.user.id, x.path) }),

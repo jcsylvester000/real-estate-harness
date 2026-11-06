@@ -76,8 +76,11 @@ function Field({ name, schema, required, value, onChange }: { name: string; sche
 
 function Calculators({ grid }: { grid: GridSDK }) {
   const [tools, setTools] = useState<ToolDefinition[]>([]);
-  const [active, setActive] = useState("compute_acquisition_costs");
-  const [values, setValues] = useState<Record<string, Record<string, unknown>>>(EXAMPLES);
+  // Other apps can open a calculator pre-filled: grid.ui.openApp("calculators", { tool, values }).
+  const launchTool = typeof grid.launchArgs.tool === "string" && grid.launchArgs.tool in TITLES ? grid.launchArgs.tool : null;
+  const launchValues = launchTool && grid.launchArgs.values && typeof grid.launchArgs.values === "object" ? (grid.launchArgs.values as Record<string, unknown>) : null;
+  const [active, setActive] = useState(launchTool ?? "compute_acquisition_costs");
+  const [values, setValues] = useState<Record<string, Record<string, unknown>>>(launchTool && launchValues ? { ...EXAMPLES, [launchTool]: launchValues } : EXAMPLES);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);

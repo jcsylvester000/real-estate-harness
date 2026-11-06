@@ -5,8 +5,10 @@ test("redirects to sign-in, then shows the desktop with the built-in apps", asyn
   await page.goto("/desktop");
   await expect(page).toHaveURL(/\/login/);
   await signIn(page);
-  for (const id of ["deal-desk", "calculators", "listings", "files", "notes", "app-center", "settings"]) await expect(page.locator(`[data-desktop-icon="${id}"]`)).toBeVisible();
+  for (const id of ["deal-desk", "property-finder", "calculators", "listings", "files", "notes", "app-center", "settings"]) await expect(page.locator(`[data-desktop-icon="${id}"]`)).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Taskbar" })).toBeVisible();
+  // No AI key in the test server: the taskbar says so, and Deal Desk explains smart search mode.
+  await expect(page.locator('[data-ai-status="off"]')).toContainText("Smart search mode");
 });
 
 test("wrong password is refused with a clear message", async ({ page }) => {
@@ -43,6 +45,7 @@ test("calculators run without AI and windows can be moved, minimized and closed"
 test("Deal Desk answers with harness calculators in demo mode and saves to Files", async ({ page }) => {
   await signIn(page);
   const dd = await openApp(page, "deal-desk", "Deal Desk AI");
+  await expect(dd.getByTestId("smart-mode")).toBeVisible();
   await dd.getByRole("button", { name: /Cost to buy/ }).click();
   await expect(dd.getByText("Calculations used: compute_acquisition_costs")).toBeVisible({ timeout: 15000 });
   await expect(dd.locator("table").first()).toContainText("Capital Gains Tax");

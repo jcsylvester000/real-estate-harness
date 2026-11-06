@@ -14,7 +14,9 @@ describe("demo provider routing", () => {
     });
     expect(routeMessage("Commission on ₱9.8M at 5%")?.arguments).toEqual({ salePrice: 9_800_000, commissionRatePercent: 5 });
     expect(routeMessage("Can a Japanese client buy a condo?")?.name).toBe("check_foreign_ownership");
-    expect(routeMessage("2BR condos in Pasig under ₱8M")?.arguments).toMatchObject({ city: "pasig", maxPrice: 8_000_000, minBedrooms: 2 });
+    expect(routeMessage("2BR condos in Pasig under ₱8M")?.arguments).toEqual({ kind: "condominium-unit", city: "Pasig", minBedrooms: 2, maxPrice: 8_000_000, limit: 5 });
+    expect(routeMessage("How many listings do we have?")?.name).toBe("get_listing_index");
+    expect(routeMessage("Tell me about GRID_6637409546")).toEqual({ name: "get_listing", arguments: { code: "GRID_6637409546" } });
     expect(routeMessage("hello")).toBeNull();
   });
 });

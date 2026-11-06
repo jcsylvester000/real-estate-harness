@@ -294,11 +294,77 @@ function Users({ grid }: { grid: GridSDK }) {
   );
 }
 
+function AiSetup({ grid }: { grid: GridSDK }) {
+  const [st, setSt] = useState<{ realAi: boolean; providers: { id: string; label: string; configured: boolean }[] } | null>(null);
+  useEffect(() => {
+    grid.ai.status().then(setSt).catch(() => {});
+  }, [grid]);
+  const works = [
+    ["Property Finder", "Plain-language search of the listings index: “2BR condo for rent in BGC under 60k”."],
+    ["Listings", "Browse, edit and import GRID listing exports. The search index updates on every change."],
+    ["Calculators", "Taxes and fees, loan payments, commission, Maceda refunds, foreign ownership."],
+    ["Deal Desk (smart search mode)", "Answers calculator and listing questions without an AI. Free conversation needs a key."],
+    ["Files, Notes, App Center, Settings", "Everything works as normal."],
+  ];
+  return (
+    <div className="max-w-2xl space-y-5">
+      <section className={`rounded-xl border p-4 ${st?.realAi ? "border-ok/30 bg-ok-soft" : "border-warn/30 bg-warn-soft"}`}>
+        <h2 className={`font-sans text-sm font-semibold ${st?.realAi ? "text-ok" : "text-warn"}`}>{st ? (st.realAi ? "AI is connected" : "No AI key yet: smart search mode") : "Checking…"}</h2>
+        <p className="mt-1 text-sm text-ink-2">
+          {st?.realAi
+            ? "Deal Desk can hold full conversations. It still answers only with GRID's calculators, rulebook and listings index."
+            : "Grid Agentic works without AI. Only Deal Desk's open conversation needs a key."}
+        </p>
+      </section>
+      {st && (
+        <table className="w-full text-left text-sm">
+          <caption className="mb-2 text-left text-xs text-muted">AI providers on this server (keys are never shown).</caption>
+          <tbody>
+            {st.providers
+              .filter((p) => p.id !== "demo")
+              .map((p) => (
+                <tr key={p.id} className="border-b border-line">
+                  <td className="py-2">{p.label}</td>
+                  <td className="py-2 text-right">{p.configured ? <span className="text-ok">Key set</span> : <span className="text-muted">No key</span>}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      )}
+      <section>
+        <h2 className="mb-2 font-sans text-sm font-semibold">What works without AI</h2>
+        <ul className="divide-y divide-line rounded-lg border border-line bg-white text-sm">
+          {works.map(([a, b]) => (
+            <li key={a} className="px-3 py-2">
+              <span className="font-medium">{a}</span>
+              <span className="block text-xs text-muted">{b}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section className="text-sm">
+        <h2 className="mb-2 font-sans text-sm font-semibold">Turning AI on (admin)</h2>
+        <ol className="list-decimal space-y-1 pl-5">
+          <li>
+            Get an API key from Anthropic (Claude), OpenAI or Google (Gemini).
+          </li>
+          <li>
+            Add it to the server: <code className="rounded bg-sand px-1">ANTHROPIC_API_KEY</code>, <code className="rounded bg-sand px-1">OPENAI_API_KEY</code> or <code className="rounded bg-sand px-1">GEMINI_API_KEY</code> in <code className="rounded bg-sand px-1">.env.local</code>, or in Netlify&apos;s environment variables.
+          </li>
+          <li>Restart the app (or redeploy). The taskbar badge turns green.</li>
+        </ol>
+        <p className="mt-2 text-xs text-muted">Each person&apos;s AI spend is capped per day (GRID_DAILY_AI_CAP_PHP). Calculators and search are free.</p>
+      </section>
+    </div>
+  );
+}
+
 function Settings({ grid }: { grid: GridSDK }) {
   const isAdmin = grid.user?.role === "admin";
   const tabs = [
     ["account", "Account"],
     ["appearance", "Appearance"],
+    ["ai", "AI setup"],
     ["usage", "My AI usage"],
     ...(isAdmin
       ? [
@@ -321,6 +387,7 @@ function Settings({ grid }: { grid: GridSDK }) {
       <div className="min-h-0 flex-1 overflow-auto p-5">
         {tab === "account" && <Account grid={grid} />}
         {tab === "appearance" && <Appearance grid={grid} />}
+        {tab === "ai" && <AiSetup grid={grid} />}
         {tab === "usage" && <Usage grid={grid} all={false} />}
         {tab === "users" && <Users grid={grid} />}
         {tab === "team-usage" && <Usage grid={grid} all />}

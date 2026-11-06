@@ -14,7 +14,10 @@ export interface ProviderSettings {
   apiKey: string;
   models: Record<ModelTier, string>;
   baseUrl?: string;
+  extraHeaders?: Record<string, string>;
 }
+
+const isOpenRouter = () => env("OPENAI_BASE_URL").includes("openrouter.ai");
 
 export function harnessConfig() {
   return {
@@ -23,7 +26,13 @@ export function harnessConfig() {
     demoEnabled: env("HARNESS_DEMO_PROVIDER", "true") !== "false",
     providers: {
       anthropic: { apiKey: env("ANTHROPIC_API_KEY"), models: { balanced: env("ANTHROPIC_MODEL", "claude-sonnet-5-5"), budget: env("ANTHROPIC_BUDGET_MODEL", "claude-haiku-5-5") } },
-      openai: { apiKey: env("OPENAI_API_KEY"), models: { balanced: env("OPENAI_MODEL", "gpt-6.1-sol"), budget: env("OPENAI_BUDGET_MODEL", "gpt-6-luna") }, baseUrl: env("OPENAI_BASE_URL", "https://api.openai.com/v1") },
+      openai: {
+        apiKey: env("OPENAI_API_KEY"),
+        models: { balanced: env("OPENAI_MODEL", "gpt-6.1-sol"), budget: env("OPENAI_BUDGET_MODEL", "gpt-6-luna") },
+        baseUrl: env("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        // OpenRouter attribution headers (optional; shown in OpenRouter's dashboard).
+        extraHeaders: isOpenRouter() ? { "HTTP-Referer": env("OPENROUTER_SITE_URL", env("APP_ORIGIN", "http://localhost:3000")), "X-Title": env("OPENROUTER_APP_NAME", "Grid Agentic") } : undefined,
+      },
       gemini: { apiKey: env("GEMINI_API_KEY"), models: { balanced: env("GEMINI_MODEL", "gemini-3.1-pro"), budget: env("GEMINI_BUDGET_MODEL", "gemini-3.5-flash-lite") } },
       demo: { apiKey: "", models: { balanced: "grid-demo", budget: "grid-demo" } },
     } satisfies Record<ProviderId, ProviderSettings>,
@@ -39,6 +48,7 @@ export function harnessConfig() {
     },
     usdToPhp: num("USD_TO_PHP", 63.5),
     brokerageName: env("GRID_BROKERAGE_NAME", "GRID Property Ventures"),
+    openaiLabel: isOpenRouter() ? "OpenRouter" : env("OPENAI_BASE_URL", "https://api.openai.com/v1").includes("api.openai.com") ? "ChatGPT (OpenAI)" : "OpenAI-compatible",
   };
 }
 

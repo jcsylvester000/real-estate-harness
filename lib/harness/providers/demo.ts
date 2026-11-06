@@ -2,6 +2,7 @@
 // (offline demos, end-to-end tests). It calls the same harness tools as a real model and only
 // reports figures those tools return. It is not an AI and says so in every reply.
 
+import { parseInquiry } from "@/lib/listings/inquiry";
 import type { ChatMessage, ModelProvider, ModelRequest, ModelResponse, ToolCall } from "../harness/types";
 
 const NO_USAGE = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
@@ -28,7 +29,6 @@ const percent = (text: string, fallback: number) => {
 };
 const percents = (text: string) => [...text.matchAll(/(\d+(?:\.\d+)?)\s*%/g)].map(m => Number(m[1]));
 const bigAmount = (text: string) => parseAmounts(text.replace(/\d+(?:\.\d+)?\s*%/g, "")).filter(n => n >= 100_000).sort((a, b) => b - a)[0];
-const CITIES = ["pasig", "makati", "taguig", "bgc", "quezon city", "mandaluyong", "cebu", "davao", "manila", "paranaque", "alabang", "cavite", "laguna", "batangas"];
 
 /** Picks one tool call for a user message, or null when no tool fits. */
 export function routeMessage(text: string): Omit<ToolCall, "id"> | null {
@@ -52,22 +52,19 @@ export function routeMessage(text: string): Omit<ToolCall, "id"> | null {
       arguments: { propertyPrice: price, downPaymentPercent: ps[0] ?? 20, annualInterestRatePercent: ps[1] ?? 7, termYears: years, lender: /pag-?ibig/.test(t) ? "pagibig" : "bank" },
     };
   }
-  if (/listing|find|show me|available|for sale|for rent|inventory|\d\s*br\b|bedroom|\bunder\b|\bbelow\b/.test(t)) {
-    const city = CITIES.find(c => t.includes(c));
-    const beds = t.match(/(\d)\s*(?:br|bed)/)?.[1];
-    return {
-      name: "search_listings",
-      arguments: {
-        ...(city ? { city: city === "bgc" ? "Taguig" : city } : {}),
-        ...(price ? { maxPrice: price } : {}),
-        ...(beds ? { minBedrooms: Number(beds) } : {}),
-        ...(/condo/.test(t) ? { propertyType: "condominium" } : {}),
-        ...(/rent|lease/.test(t) ? { forLease: true } : {}),
-      },
-    };
+  if (/\b(cost|costs|tax|taxes|cgt|dst|closing|transfer tax|fees)\b/.test(t) && price) {
+    return { name: "compute_acquisition_costs", arguments: { sellingPrice: price, lguType: /province|cavite|laguna|batangas|bulacan|pampanga|rizal|la union|benguet|cebu/.test(t) ? "province" : "city_or_metro_manila" } };
   }
-  if (/cost|tax|cgt|dst|closing|transfer|buy/.test(t) && price) {
-    return { name: "compute_acquisition_costs", arguments: { sellingPrice: price, lguType: /province|cavite|laguna|batangas/.test(t) ? "province" : "city_or_metro_manila" } };
+  if (/\b(how many|what (do|does) (we|grid) have|inventory overview|overview|summary of (the )?(listings|inventory)|listings index)\b/.test(t)) {
+    return { name: "get_listing_index", arguments: {} };
+  }
+  const code = text.match(/\b(GRID[_-][A-Z0-9-]{3,}|DEMO-\d{3})\b/i)?.[1];
+  if (code) return { name: "get_listing", arguments: { code: code.toUpperCase() } };
+  const parsed = parseInquiry(text);
+  const f = parsed.filters;
+  const listingIntent = /\b(listings?|find|show|looking|search|available|for sale|for rent|rent|lease|condos?|house|lots?|warehouse|office|townhouse|building|property|properties)\b|\d\s*br\b|bedroom/.test(t);
+  if (listingIntent || f.city || f.province || f.kind) {
+    return { name: "search_listings", arguments: { ...f, limit: 5 } };
   }
   return null;
 }
@@ -94,15 +91,34 @@ export function summarize(name: string, result: any): string {
       return result.covered === false ? result.explanation : `Cash surrender value ${php(result.cashSurrenderValue)} (${result.refundPercent}% of payments). Grace period: ${result.gracePeriod}. Basis: ${result.basis}.`;
     case "check_foreign_ownership":
       return `Verdict: ${String(result.verdict).replace(/_/g, " ")}. ${(result.conditions ?? []).join(" ")} Basis: ${(result.basis ?? []).join(", ")}.`;
-    case "search_listings":
-      if (!result.count) return result.note ?? "No matching listings.";
+    case "search_listings": {
+      const notes = (result.notes ?? []).filter((n: string) => !/Do not invent/.test(n));
+      if (!result.total) return ["No listing in the index matches that.", ...notes, "Try fewer filters, a nearby city, or a higher budget. Property Finder shows what is available."].join(" ");
+      const rows = result.listings.map((l: any) => {
+        const price = l.monthlyRentPhp !== undefined ? `${php(l.monthlyRentPhp)}/mo` : php(l.pricePhp);
+        const size = l.floorAreaSqm ? `${l.floorAreaSqm} sqm` : l.lotAreaSqm ? `${l.lotAreaSqm} sqm lot` : "";
+        return `| ${l.code} | ${String(l.name).replace(/\|/g, "/")} | ${[l.city ?? l.province ?? "", size].filter(Boolean).join(" · ")} | ${price} |`;
+      });
       return [
-        `${result.count} match(es) in inventory:`,
+        `${result.total} listing${result.total === 1 ? "" : "s"} match${result.total === 1 ? "es" : ""}${result.total > rows.length ? `; the ${rows.length} best:` : ":"}`,
         "",
-        "| ID | Listing | City | Price |",
+        "| Code | Listing | Where | Price |",
         "|---|---|---|---|",
-        ...result.listings.map((l: any) => `| ${l.id} | ${l.title} | ${l.city}, ${l.area} | ${php(l.price)} |`),
+        ...rows,
+        ...(notes.length ? ["", ...notes.map((n: string) => `_${n}_`)] : []),
       ].join("\n");
+    }
+    case "get_listing_index": {
+      const top = (result.byCity ?? []).slice(0, 8).map((c: any) => `${c.city} (${c.count})`).join(", ");
+      const kinds = (result.byKind ?? []).slice(0, 6).map((k: any) => `${k.label} (${k.count})`).join(", ");
+      const tx = (result.byTransaction ?? []).map((x: any) => `${x.count} for ${x.value === "lease" ? "rent" : "sale"}`).join(", ");
+      return [`GRID has **${result.totalAvailable} available listings**${tx ? ` (${tx})` : ""}.`, kinds && `Most common: ${kinds}.`, top && `Top cities: ${top}.`].filter(Boolean).join("\n\n");
+    }
+    case "get_listing": {
+      if (result.error) return result.error;
+      const price = result.monthlyRentPhp !== undefined ? `${php(result.monthlyRentPhp)} per month` : php(result.pricePhp);
+      return [`**${result.code} · ${result.name}**`, "", `- ${result.kind}, for ${result.transaction === "lease" ? "rent" : "sale"}: ${price}`, `- ${result.location}`, result.bedrooms !== null && result.bedrooms !== undefined ? `- Bedrooms: ${result.bedrooms}` : "", result.floorAreaSqm ? `- Floor area: ${result.floorAreaSqm} sqm` : "", result.lotAreaSqm ? `- Lot area: ${result.lotAreaSqm} sqm` : ""].filter(Boolean).join("\n");
+    }
     default:
       return "```json\n" + JSON.stringify(result, null, 2).slice(0, 1500) + "\n```";
   }
@@ -121,13 +137,13 @@ export class DemoProvider implements ModelProvider {
         const m = msgs[i] as Extract<ChatMessage, { role: "tool" }>;
         results.unshift(summarize(m.name, JSON.parse(m.content)));
       }
-      return { text: `${results.join("\n\n")}\n\n_Demo mode: answer assembled from the harness calculators, not an AI model. A licensed broker should review before sending to a client._`, toolCalls: [], usage: NO_USAGE, stopReason: "end_turn" };
+      return { text: `${results.join("\n\n")}\n\n_Smart search mode (no AI key): assembled from GRID's calculators and listings index, not written by an AI. A licensed broker should review before sending to a client._`, toolCalls: [], usage: NO_USAGE, stopReason: "end_turn" };
     }
     const userText = last?.role === "user" ? last.content : "";
     const call = routeMessage(userText);
     if (!call) {
       return {
-        text: "Demo mode (no AI key): I can run the harness calculators and listing search. Try “Cost to buy a ₱7.6M condo in Pasig”, “2BR condos in Pasig under ₱8M”, “Monthly payment on ₱7.6M, 20% down, 7%, 20 years”, “Commission on ₱9.8M at 5%” or “Can a Japanese client buy a condo?”.",
+        text: "No AI key is set, so I work in **smart search mode**: I run GRID's calculators and search the listings index, but I cannot hold a free conversation. Try “2BR condo for rent in BGC under 60k”, “commercial lot near C6”, “How many listings do we have?”, “Cost to buy a ₱7.6M condo in Pasig”, “Monthly payment on ₱7.6M, 20% down, 7%, 20 years” or “Can a Japanese client buy a condo?”.",
         toolCalls: [],
         usage: NO_USAGE,
         stopReason: "end_turn",

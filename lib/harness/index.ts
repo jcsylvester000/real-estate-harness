@@ -7,5 +7,5 @@ export { createProvider, PROVIDER_IDS } from "./providers";
 export { MODEL_PRICES, estimateCostUsd } from "./providers/pricing";
 export { ToolRegistry, DEFAULT_TOOLS } from "./tools/tool-registry";
 export type { HarnessTool } from "./tools/tool-types";
-export { setListingSource, type Listing } from "./tools/search-listings";
+export { setListingBackend, demoBackend, type ListingBackend, type ListingSearchInput } from "./tools/search-listings";
 export { harnessConfig, type HarnessConfig } from "./config";

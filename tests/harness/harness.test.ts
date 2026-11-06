@@ -32,7 +32,7 @@ test("runs a tool, feeds the result back, and returns the final answer with cost
   assert.equal(r.estimatedCostUsd, 0.0084);
   assert.equal(r.warnings.length, 0);
   assert.ok(provider.requests[0]!.system.includes("RA 9646"));
-  assert.equal(provider.requests[0]!.tools.length, 8);
+  assert.equal(provider.requests[0]!.tools.length, 10);
 });
 
 test("keeps session history between turns", async () => {

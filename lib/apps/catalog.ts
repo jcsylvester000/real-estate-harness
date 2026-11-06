@@ -17,6 +17,8 @@ export interface AppInfo {
   height: number;
   /** Shown only to these roles (undefined = everyone). */
   roles?: Role[];
+  /** none: never uses AI · optional: better with an AI key, works without one · required: needs an AI key. */
+  ai?: "none" | "optional" | "required";
   /** Opens a file of these extensions (".txt", ".md"). */
   opens?: string[];
   hidden?: boolean;
@@ -35,6 +37,19 @@ export const BUILTIN_APPS: AppInfo[] = [
     permissions: ["ai", "tools", "listings.read", "fs.write"],
     width: 980,
     height: 680,
+    ai: "optional",
+  },
+  {
+    id: "property-finder",
+    name: "Property Finder",
+    description: "Type what the client wants; get matching GRID listings. No AI needed.",
+    icon: "search",
+    url: "/apps/property-finder",
+    kind: "builtin",
+    permissions: ["listings.read", "fs.write"],
+    width: 1100,
+    height: 700,
+    ai: "none",
   },
   {
     id: "calculators",
@@ -50,13 +65,13 @@ export const BUILTIN_APPS: AppInfo[] = [
   {
     id: "listings",
     name: "Listings",
-    description: "The GRID inventory the AI is allowed to recommend.",
+    description: "The GRID listings database: browse, edit and import CSV exports.",
     icon: "building",
     url: "/apps/listings",
     kind: "builtin",
     permissions: ["listings.read", "listings.write"],
-    width: 1000,
-    height: 640,
+    width: 1180,
+    height: 700,
   },
   {
     id: "files",

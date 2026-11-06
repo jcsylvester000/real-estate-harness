@@ -20,7 +20,7 @@ export function createProvider(id: ProviderId, settings: ProviderSettings, tier:
     case "anthropic":
       return new AnthropicProvider({ apiKey: settings.apiKey, model, http });
     case "openai":
-      return new OpenAICompatibleProvider({ apiKey: settings.apiKey, model, baseUrl: settings.baseUrl, http });
+      return new OpenAICompatibleProvider({ apiKey: settings.apiKey, model, baseUrl: settings.baseUrl, extraHeaders: settings.extraHeaders, http });
     case "gemini":
       return new GeminiProvider({ apiKey: settings.apiKey, model, http });
     default:

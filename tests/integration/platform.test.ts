@@ -4,7 +4,8 @@ import { callDriver, type Actor } from "@/lib/server/drivers";
 import { DriverError } from "@/lib/server/errors";
 import { createUser, login, validateSession, type PublicUser } from "@/lib/server/services/auth";
 import { installApp, resolveApp } from "@/lib/server/services/apps";
-import { seedDemoListings } from "@/lib/server/stores/listings";
+import { seedDemoListings } from "@/lib/listings/import";
+import { freshListingsDb } from "../helpers/listings-db";
 import { normalizePath } from "@/lib/server/services/fs";
 import { freshDb } from "../helpers/db";
 
@@ -32,7 +33,7 @@ beforeAll(async () => {
   admin = await createUser({ username: "admin1", password: PW, role: "admin" });
   sales = await createUser({ username: "sales1", password: PW, role: "salesperson" });
   other = await createUser({ username: "sales2", password: PW, role: "salesperson" });
-  await seedDemoListings();
+  await seedDemoListings(await freshListingsDb());
 });
 
 describe("auth", () => {
@@ -67,7 +68,7 @@ describe("driver gate", () => {
   });
 
   it("applies roles: salespersons cannot edit listings or manage users", async () => {
-    const l = { title: "Test lot", city: "Lipa", propertyType: "lot", price: 1_500_000 };
+    const l = { name: "Test lot", location: "Lipa, Batangas", transactionType: "sale", propertyType: "land", price: 1_500_000 };
     expect(await code(callDriver(as(sales, app("listings")), "listings.save", l))).toBe("permission_denied");
     expect(await code(callDriver(as(admin, app("listings")), "listings.save", l))).toBe("ok");
     expect(await code(callDriver(as(sales, app("settings")), "users.list", {}))).toBe("permission_denied");
@@ -144,7 +145,7 @@ describe("AI driver (harness)", () => {
 
   it("searches listings from the database inventory", async () => {
     const turn = (await callDriver(as(sales, app("deal-desk")), "ai.chat", { message: "2BR condos in Pasig under ₱8M", provider: "demo" })) as {
-      toolTrace: { name: string; result: { listings: { id: string; city: string }[] } }[];
+      toolTrace: { name: string; result: { listings: { code: string; city: string }[] } }[];
     };
     expect(turn.toolTrace[0]!.name).toBe("search_listings");
     expect(turn.toolTrace[0]!.result.listings.length).toBeGreaterThan(0);

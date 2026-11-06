@@ -25,6 +25,13 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   "gemini-3.8-flash": { input: 1.5, cachedInput: 0.15, output: 7.5 },
   "gemini-3.1-pro": { input: 2, cachedInput: 0.2, output: 12 },
   "gemini-4-argon": { input: 4, cachedInput: 0.4, output: 20 },
+  // Via OpenRouter (provider/model ids). OpenRouter also reports the real cost per call, which the
+  // harness prefers; these are the fallback. Source: OpenRouter models API, checked 6 Nov 2026.
+  "openai/gpt-4o": { input: 2.5, cachedInput: 1.25, output: 10 },
+  "openai/gpt-4o-mini": { input: 0.15, cachedInput: 0.075, output: 0.6 },
+  "anthropic/claude-sonnet-5.5": { input: 2, cachedInput: 0.2, output: 10 },
+  "anthropic/claude-haiku-5.5": { input: 0.1, cachedInput: 0.01, output: 0.5 },
+  "google/gemini-3.5-flash-lite": { input: 0.3, cachedInput: 0.03, output: 2.5 },
   // Demo (no model, no cost)
   "grid-demo": { input: 0, cachedInput: 0, output: 0 },
 };

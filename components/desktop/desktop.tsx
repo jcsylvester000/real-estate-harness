@@ -40,7 +40,13 @@ function buildSrc(app: AppInfo, winId: string) {
   return app.url;
 }
 
-export function Desktop({ user, initialApps, initialWallpaper }: { user: DesktopUser; initialApps: AppInfo[]; initialWallpaper: string }) {
+export interface AiState {
+  realAi: boolean;
+  /** Names of providers with keys, e.g. ["Claude"]. */
+  providers: string[];
+}
+
+export function Desktop({ user, initialApps, initialWallpaper, ai }: { user: DesktopUser; initialApps: AppInfo[]; initialWallpaper: string; ai: AiState }) {
   const [apps, setApps] = useState<AppInfo[]>(initialApps);
   const [wins, setWins] = useState<Win[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -267,7 +273,7 @@ export function Desktop({ user, initialApps, initialWallpaper }: { user: Desktop
       // Sandboxed third-party frames have an opaque origin ("null"), so replies go to the exact window with "*".
       const reply = (msg: Record<string, unknown>) => target.postMessage({ __grid: PROTOCOL, ...msg }, win!.app.kind === "builtin" ? window.location.origin : "*");
       if (d.type === "hello") {
-        reply({ type: "welcome", appId: win.app.id, appName: win.app.name, launchArgs: win.launchArgs, user: { displayName: user.displayName, role: user.role } });
+        reply({ type: "welcome", appId: win.app.id, appName: win.app.name, launchArgs: win.launchArgs, user: { displayName: user.displayName, role: user.role }, ai: { realAi: ai.realAi } });
         return;
       }
       if (d.type !== "req" || typeof d.id !== "string" || typeof d.method !== "string") return;
@@ -285,7 +291,7 @@ export function Desktop({ user, initialApps, initialWallpaper }: { user: Desktop
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [ensurePermission, handleUi, user.displayName, user.role]);
+  }, [ensurePermission, handleUi, user.displayName, user.role, ai.realAi]);
 
   // -- Keyboard: Escape closes menus --
   useEffect(() => {
@@ -344,7 +350,11 @@ export function Desktop({ user, initialApps, initialWallpaper }: { user: Desktop
         {wins.length === 0 && (
           <div className="pointer-events-none absolute right-6 bottom-6 hidden max-w-xs text-right text-cream/80 md:block">
             <p className="font-display text-2xl text-cream">Magandang araw, {user.displayName.split(" ")[0]}.</p>
-            <p className="mt-1 text-sm">Double-click an app to open it. Deal Desk AI answers with GRID&apos;s own calculators and listings.</p>
+            <p className="mt-1 text-sm">
+              {ai.realAi
+                ? "Double-click an app to open it. Deal Desk AI answers with GRID's own calculators and listings."
+                : "Double-click an app to open it. Property Finder, Listings, Calculators and Files all work without an AI key."}
+            </p>
           </div>
         )}
       </main>
@@ -469,6 +479,17 @@ export function Desktop({ user, initialApps, initialWallpaper }: { user: Desktop
             </li>
           ))}
         </ul>
+        <button
+          type="button"
+          data-ai-status={ai.realAi ? "ready" : "off"}
+          onClick={() => openApp("settings", { tab: "ai" })}
+          title={ai.realAi ? `AI connected: ${ai.providers.join(", ")}` : "No AI key yet. Everything except free-form AI chat works. Click for details."}
+          className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-white/15 px-2.5 text-[11px] hover:bg-white/10"
+        >
+          <span className={`size-2 rounded-full ${ai.realAi ? "bg-[#4ade80]" : "bg-gold"}`} aria-hidden />
+          <span className="hidden md:inline">{ai.realAi ? `AI: ${ai.providers[0]}` : "Smart search mode"}</span>
+          <span className="sr-only md:hidden">{ai.realAi ? "AI connected" : "No AI key: smart search mode"}</span>
+        </button>
         <time className="hidden px-2 text-right text-xs text-mist sm:block" aria-label="Manila time">
           {clock}
         </time>

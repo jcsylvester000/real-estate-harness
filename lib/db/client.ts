@@ -2,8 +2,8 @@
  * Database client.
  *  - Default: Neon pooled connection over WebSockets (DATABASE_URL).
  *  - DB_DRIVER=pglite: embedded Postgres (PGLITE_DIR or memory), migrated on first use; for local tests
- *    and offline demos only. PGLITE_SEED_ADMIN="username:password" seeds an admin; PGLITE_SEED_DEMO=true
- *    loads the demo listings.
+ *    and offline demos only. PGLITE_SEED_ADMIN="username:password" seeds an admin.
+ * Listings live in their own database: lib/listings/db.ts.
  * Created on first use, never at import, so builds work without DATABASE_URL.
  */
 import { Pool, neonConfig } from "@neondatabase/serverless";
@@ -32,10 +32,6 @@ async function createPglite(): Promise<DB> {
     const [username, ...rest] = seed.split(":");
     const { ensureUser } = await import("@/lib/server/services/auth");
     await ensureUser(instance, { username: username!, password: rest.join(":"), role: "admin", displayName: "Admin" });
-  }
-  if (process.env.PGLITE_SEED_DEMO === "true") {
-    const { seedDemoListings } = await import("@/lib/server/stores/listings");
-    await seedDemoListings(instance);
   }
   return instance;
 }

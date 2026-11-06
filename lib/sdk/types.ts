@@ -1,7 +1,9 @@
 /** Types for public/sdk/grid.js (the window.grid object inside app iframes). */
 import type { AppInfo } from "@/lib/apps/catalog";
 import type { ToolDefinition, HarnessTurnResult } from "@/lib/harness/harness/types";
-import type { Listing } from "@/lib/harness/tools/search-listings";
+import type { IndexFacets, ListingCard, SearchInput, SearchResult } from "@/lib/listings/search";
+import type { ImportSummary } from "@/lib/listings/import";
+import type { ParsedInquiry } from "@/lib/listings/inquiry";
 
 export interface FsEntry {
   path: string;
@@ -11,7 +13,9 @@ export interface FsEntry {
   size: number;
   updatedAt: string;
 }
-export type ListingRow = Listing & { isDemo: boolean; updatedAt: string };
+export type { ListingCard, SearchInput, SearchResult, IndexFacets, ImportSummary, ParsedInquiry };
+export type ListingDetail = ListingCard & { notes: string; bathrooms: number | null; foreignEligible: boolean | null; titleType: string; propertySubType: string; exclusive: boolean; publishedAt: string | null; listedByEmail?: string };
+export interface ImportBatch { id: number; fileName: string; rowsTotal: number; inserted: number; updated: number; skipped: number; createdAt: string; problems: { row: number; code: string; reason: string }[] }
 export interface ProviderInfo {
   id: string;
   label: string;
@@ -31,6 +35,8 @@ export interface GridSDK {
   on(name: string, fn: (data: unknown) => void): () => void;
   auth: { whoami(): Promise<{ id: string; username: string; displayName: string; role: string; publicId: string }> };
   ai: {
+    available: boolean;
+    status(): Promise<{ realAi: boolean; demo: boolean; providers: { id: string; label: string; configured: boolean }[] }>;
     chat(message: string, opts?: { sessionId?: string; provider?: string; tier?: "balanced" | "budget" }): Promise<ChatTurn>;
     providers(): Promise<ProviderInfo[]>;
     sessions(): Promise<{ id: string; title: string; updatedAt: string }[]>;
@@ -39,10 +45,14 @@ export interface GridSDK {
   };
   tools: { list(): Promise<ToolDefinition[]>; run<T = unknown>(name: string, args: Record<string, unknown>): Promise<T> };
   listings: {
-    search(f?: Record<string, unknown>): Promise<ListingRow[]>;
-    get(id: string): Promise<ListingRow | null>;
-    save(l: Record<string, unknown>): Promise<ListingRow>;
-    delete(id: string): Promise<boolean>;
+    search(f?: SearchInput): Promise<SearchResult>;
+    ask(text: string, opts?: { limit?: number; offset?: number; sort?: SearchInput["sort"] }): Promise<{ parsed: ParsedInquiry; result: SearchResult }>;
+    facets(): Promise<IndexFacets>;
+    get(code: string): Promise<ListingDetail | null>;
+    save(l: Record<string, unknown>): Promise<ListingDetail>;
+    delete(code: string): Promise<boolean>;
+    import(fileName: string, csv: string): Promise<ImportSummary>;
+    imports(): Promise<ImportBatch[]>;
   };
   fs: {
     list(path?: string): Promise<FsEntry[]>;

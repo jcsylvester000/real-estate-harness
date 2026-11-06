@@ -54,6 +54,8 @@ export interface ModelResponse {
   toolCalls: ToolCall[];
   usage: TokenUsage;
   stopReason: string;
+  /** Cost the provider itself reported for this call in US$ (OpenRouter does); preferred over the price table. */
+  costUsd?: number;
 }
 
 /** One model behind one API. Implemented once per vendor in `src/providers/`. */

@@ -8,7 +8,6 @@ import {
   RealEstateHarness,
   createProvider,
   harnessConfig,
-  setListingSource,
   type ChatMessage,
   type HarnessTurnResult,
   type ModelTier,
@@ -17,10 +16,9 @@ import {
 } from "@/lib/harness";
 import { getDb } from "@/lib/db/client";
 import { chatSessions, usageEvents } from "@/lib/db/schema";
-import { harnessListingLoader } from "../stores/listings";
+import "./listings"; // registers the listings index as the harness inventory
 import { DriverError, invalid, notFound } from "../errors";
 
-setListingSource(harnessListingLoader as never);
 
 export const MAX_MESSAGE_CHARS = 4000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -79,13 +77,20 @@ export async function spentTodayPhp(userId: string) {
   return Number(r?.php ?? 0);
 }
 
+/** Whether a real AI model is set up (the Demo provider does not count). */
+export function aiStatus() {
+  const list = providerList();
+  const real = list.filter((p) => p.id !== "demo" && p.configured);
+  return { realAi: real.length > 0, demo: list.some((p) => p.id === "demo" && p.configured), providers: list.map(({ id, label, configured }) => ({ id, label, configured })) };
+}
+
 export function providerList() {
   const cfg = harnessConfig();
   return (Object.keys(cfg.providers) as ProviderId[])
     .filter((id) => id !== "demo" || cfg.demoEnabled)
     .map((id) => ({
       id,
-      label: { anthropic: "Claude", openai: "ChatGPT / OpenAI-compatible", gemini: "Gemini", demo: "Demo (no AI key)" }[id],
+      label: { anthropic: "Claude", openai: cfg.openaiLabel, gemini: "Gemini", demo: "Smart search (no AI key)" }[id],
       configured: id === "demo" ? cfg.demoEnabled : Boolean(cfg.providers[id].apiKey),
       models: cfg.providers[id].models,
       isDefault: id === cfg.defaultProvider,

@@ -56,6 +56,10 @@ export class RealEstateHarness {
     const toolTrace: HarnessTurnResult["toolTrace"] = [];
     let reply = "";
     let steps = 0;
+    // Provider-reported cost (OpenRouter) when every call reported one; otherwise the price table estimate.
+    let reportedUsd = 0;
+    let allReported = true;
+    const spentUsd = () => (allReported && steps > 0 ? reportedUsd : estimateCostUsd(provider.model, usage));
 
     while (steps < this.opts.maxToolSteps) {
       steps++;
@@ -63,6 +67,8 @@ export class RealEstateHarness {
       usage.inputTokens += res.usage.inputTokens;
       usage.cachedInputTokens += res.usage.cachedInputTokens;
       usage.outputTokens += res.usage.outputTokens;
+      if (res.costUsd === undefined) allReported = false;
+      else reportedUsd += res.costUsd;
       messages.push({ role: "assistant", content: res.text, toolCalls: res.toolCalls.length ? res.toolCalls : undefined });
       reply = res.text;
       if (!res.toolCalls.length) break;
@@ -73,7 +79,7 @@ export class RealEstateHarness {
         messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: JSON.stringify(result) });
       }
 
-      const spent = estimateCostUsd(provider.model, usage);
+      const spent = spentUsd();
       if (spent !== null && spent > this.opts.maxCostPerTurnUsd) {
         warnings.push(`Stopped early: this turn reached the US$${this.opts.maxCostPerTurnUsd} spending cap.`);
         reply ||= "I stopped before finishing because this request hit the spending cap. Please narrow the question.";
@@ -91,7 +97,8 @@ export class RealEstateHarness {
 
     warnings.push(...reviewReply(reply, toolTrace));
     await this.sessions.save(sessionId, messages);
-    const usd = estimateCostUsd(provider.model, usage);
+    const raw = spentUsd();
+    const usd = raw === null ? null : Math.round(raw * 1e6) / 1e6;
     return {
       sessionId,
       reply,

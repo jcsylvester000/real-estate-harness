@@ -18,4 +18,3 @@ next-env.d.ts
 .data/
 .fntest-*/
 .data/
-.sync/

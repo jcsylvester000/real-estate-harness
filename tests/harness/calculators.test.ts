@@ -70,10 +70,10 @@ test("foreign ownership rules", () => {
 
 test("listing search only returns inventory matches", async () => {
   const r = await searchListings({ city: "Pasig", minBedrooms: 2, maxPrice: 8_000_000 });
-  assert.deepEqual(r.listings.map(l => l.id), ["DEMO-001", "DEMO-003"]);
+  assert.deepEqual(r.listings.map(l => l.code), ["DEMO-001", "DEMO-003"]);
   const none = await searchListings({ city: "Davao" });
-  assert.equal(none.count, 0);
-  assert.ok(none.note);
+  assert.equal(none.total, 0);
+  assert.ok(none.notes.length);
 });
 
 test("registry validates and coerces arguments", async () => {

@@ -115,31 +115,6 @@ export const kv = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.appId, t.key] })],
 );
 
-export const listings = pgTable(
-  "listings",
-  {
-    id: text("id").primaryKey(),
-    title: text("title").notNull(),
-    city: text("city").notNull(),
-    area: text("area").notNull().default(""),
-    propertyType: text("property_type").notNull(),
-    bedrooms: integer("bedrooms").notNull().default(0),
-    bathrooms: integer("bathrooms").notNull().default(0),
-    floorAreaSqm: numeric("floor_area_sqm", { precision: 10, scale: 2 }),
-    lotAreaSqm: numeric("lot_area_sqm", { precision: 12, scale: 2 }),
-    pricePhp: numeric("price_php", { precision: 14, scale: 2 }).notNull(),
-    status: text("status").notNull().default("available"),
-    titleType: text("title_type").notNull().default(""),
-    foreignEligible: boolean("foreign_eligible").notNull().default(false),
-    notes: text("notes").notNull().default(""),
-    isDemo: boolean("is_demo").notNull().default(false),
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
-    createdAt: ts("created_at").notNull().defaultNow(),
-    updatedAt: ts("updated_at").notNull().defaultNow(),
-  },
-  (t) => [index("listings_city_idx").on(sql`lower(${t.city})`), index("listings_status_idx").on(t.status)],
-);
-
 /** Harness conversation memory (replaces the harness InMemorySessionStore). */
 export const chatSessions = pgTable(
   "chat_sessions",

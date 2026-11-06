@@ -1,6 +1,7 @@
 /**
- * Applies the SQL migrations in ./drizzle to the database in DATABASE_URL_UNPOOLED
- * (falls back to DATABASE_URL). Safe to run repeatedly. Usage: npm run db:migrate
+ * Applies migrations to both databases. Safe to run repeatedly. Usage: npm run db:migrate
+ *  - App database (DATABASE_URL_UNPOOLED, else DATABASE_URL): ./drizzle
+ *  - Listings database (LISTINGS_DATABASE_URL[_UNPOOLED], else the app database): ./drizzle-listings, schema listings_index
  */
 import { config } from "dotenv";
 import { Pool, neonConfig } from "@neondatabase/serverless";
@@ -9,24 +10,27 @@ import { migrate } from "drizzle-orm/neon-serverless/migrator";
 
 config({ path: ".env.local" });
 
+async function run(label: string, url: string, folder: string, schema?: string) {
+  const pool = new Pool({ connectionString: url, max: 1 });
+  try {
+    const started = Date.now();
+    await migrate(drizzle({ client: pool }), { migrationsFolder: folder, ...(schema ? { migrationsSchema: schema } : {}) });
+    console.log(`db:migrate ${label} done in ${Date.now() - started} ms.`);
+  } finally {
+    await pool.end();
+  }
+}
+
 async function main() {
-  const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
-  if (!url) {
+  const app = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
+  const listings = process.env.LISTINGS_DATABASE_URL_UNPOOLED || process.env.LISTINGS_DATABASE_URL || app;
+  if (!app) {
     console.log("db:migrate skipped: DATABASE_URL_UNPOOLED and DATABASE_URL are not set.");
     return;
   }
   if (typeof WebSocket !== "undefined") neonConfig.webSocketConstructor = WebSocket;
-  const pool = new Pool({ connectionString: url, max: 1 });
-  try {
-    const started = Date.now();
-    await migrate(drizzle({ client: pool }), { migrationsFolder: "./drizzle" });
-    const { rows } = await pool.query(
-      "select count(*)::int as n from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'",
-    );
-    console.log(`db:migrate done in ${Date.now() - started} ms. Tables in public schema: ${rows[0].n}`);
-  } finally {
-    await pool.end();
-  }
+  await run("app database", app, "./drizzle");
+  await run(listings === app ? "listings index (same database, schema listings_index)" : "listings database", listings!, "./drizzle-listings", "listings_index");
 }
 
 main().catch((err) => {

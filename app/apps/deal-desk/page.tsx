@@ -16,7 +16,8 @@ interface Msg {
 
 const QUICK = [
   { label: "Cost to buy", text: "Cost to buy a ₱7.6M condo in Pasig?" },
-  { label: "Find listings", text: "2BR condos in Pasig under ₱8M" },
+  { label: "Find listings", text: "2BR condo for rent in BGC under 60k" },
+  { label: "What do we have?", text: "How many listings do we have?" },
   { label: "Monthly payment", text: "Monthly payment on ₱7.6M, 20% down, 7%, 20 years" },
   { label: "Maceda refund", text: "Buyer paid ₱900K over 6 years and wants out. Maceda refund?" },
   { label: "Foreign buyer", text: "Can a Japanese client buy a condo?" },
@@ -92,7 +93,8 @@ function DealDesk({ grid }: { grid: GridSDK }) {
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [sessions, setSessions] = useState<{ id: string; title: string; updatedAt: string }[]>([]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(typeof grid.launchArgs.prompt === "string" ? grid.launchArgs.prompt.slice(0, 4000) : "");
+  const realAi = grid.ai.available;
   const [busy, setBusy] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [spent, setSpent] = useState<{ today: number; cap: number } | null>(null);
@@ -239,7 +241,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
         <div className="min-h-0 flex-1 overflow-auto px-4 py-4" aria-live="polite">
           {msgs.length === 0 ? (
             <div className="mx-auto max-w-xl pt-6 text-center">
-              <p className="eyebrow">Deal Desk AI</p>
+              <p className="eyebrow">{realAi ? "Deal Desk AI" : "Deal Desk · smart search mode"}</p>
               <h1 className="mt-2 text-3xl">What are we working on?</h1>
               <p className="mt-2 text-sm text-muted">
                 Answers use GRID&apos;s fixed calculators, rulebook and inventory, never guessed figures. Every reply shows the calculations used and its cost.
@@ -251,7 +253,25 @@ function DealDesk({ grid }: { grid: GridSDK }) {
                   </button>
                 ))}
               </div>
-              {provider === "demo" && <p className="mt-5 rounded-lg bg-info-soft px-3 py-2 text-xs text-info">Demo mode: no AI key is set, so answers come straight from the calculators. Add a Claude, OpenAI or Gemini key on the server for full AI answers.</p>}
+              {!realAi && (
+                <div data-testid="smart-mode" className="mt-5 rounded-xl border border-info/30 bg-info-soft p-4 text-left text-xs text-info">
+                  <p className="font-semibold">Smart search mode: no AI key is set up yet</p>
+                  <p className="mt-1">
+                    Deal Desk still runs GRID&apos;s calculators and searches the listings index for questions like the ones above. It cannot hold an open conversation until an admin adds an AI key.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" className="btn btn-ghost min-h-8 px-3 text-xs" onClick={() => grid.ui.openApp("property-finder")}>
+                      Open Property Finder
+                    </button>
+                    <button type="button" className="btn btn-ghost min-h-8 px-3 text-xs" onClick={() => grid.ui.openApp("calculators")}>
+                      Open Calculators
+                    </button>
+                    <button type="button" className="btn btn-ghost min-h-8 px-3 text-xs" onClick={() => grid.ui.openApp("settings", { tab: "ai" })}>
+                      How to add an AI key
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="mx-auto max-w-3xl space-y-4">

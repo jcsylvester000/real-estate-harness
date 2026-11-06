@@ -17,7 +17,9 @@
     "e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/db-migrate.ts",
-    "db:seed": "tsx scripts/db-seed.ts"
+    "db:seed": "tsx scripts/db-seed.ts",
+    "listings:import": "tsx scripts/listings-import.ts",
+    "db:generate:listings": "drizzle-kit generate --config drizzle-listings.config.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "~1.2.0",

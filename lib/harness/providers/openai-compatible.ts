@@ -27,12 +27,15 @@ export class OpenAICompatibleProvider implements ModelProvider {
   async complete(req: ModelRequest): Promise<ModelResponse> {
     // OpenAI's newer models take max_completion_tokens; most compatible servers still expect max_tokens.
     const isOpenAI = this.baseUrl.includes("api.openai.com");
+    const isOpenRouter = this.baseUrl.includes("openrouter.ai");
     const body = {
       model: this.model,
       ...(isOpenAI ? { max_completion_tokens: req.maxOutputTokens } : { max_tokens: req.maxOutputTokens }),
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       messages: [{ role: "system", content: req.system }, ...toOpenAIMessages(req.messages)],
       tools: req.tools.map(t => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })),
+      // OpenRouter: return the real charge for this call in usage.cost (US$).
+      ...(isOpenRouter ? { usage: { include: true } } : {}),
     };
     const data = await postJson(
       `${this.baseUrl}/chat/completions`,
@@ -54,6 +57,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       toolCalls,
       usage: { inputTokens: (u.prompt_tokens ?? 0) - cached, cachedInputTokens: cached, outputTokens: u.completion_tokens ?? 0 },
       stopReason: choice.finish_reason ?? "unknown",
+      ...(typeof u.cost === "number" && Number.isFinite(u.cost) ? { costUsd: u.cost } : {}),
     };
   }
 }

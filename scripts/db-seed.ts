@@ -1,12 +1,13 @@
-/** Loads the harness demo listings (fictitious, marked "demo") into the database. Safe to run repeatedly. */
+/** Loads the harness's 8 fictitious demo listings (source "demo") into the listings database. Safe to run repeatedly. */
 import { config } from "dotenv";
 
 config({ path: ".env.local" });
 
 async function main() {
-  const { seedDemoListings } = await import("../lib/server/stores/listings");
-  const n = await seedDemoListings();
-  console.log(`db:seed done: ${n} demo listings checked (existing ids are left as they are).`);
+  const { getListingsDb } = await import("../lib/listings/db");
+  const { seedDemoListings } = await import("../lib/listings/import");
+  const n = await seedDemoListings(await getListingsDb());
+  console.log(`db:seed done: ${n} demo listings checked (existing codes are left as they are).`);
   process.exit(0);
 }
 

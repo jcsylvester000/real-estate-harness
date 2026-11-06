@@ -72,6 +72,7 @@
       grid.appName = d.appName;
       grid.launchArgs = d.launchArgs || {};
       grid.user = d.user || null;
+      grid.ai.available = !!(d.ai && d.ai.realAi);
       document.documentElement.dataset.gridTheme = d.theme || "light";
       resolveReady(grid);
     } else if (d.type === "res" && pending[d.id]) {
@@ -112,6 +113,9 @@
     auth: { whoami: c("auth.whoami") },
 
     ai: {
+      /** True when the server has a real AI key; false means Smart search mode (calculators + index, no free chat). */
+      available: false,
+      status: c("ai.status"),
       /** One harness turn: reply, tool trace, tokens, cost (US$ and ₱), warnings. */
       chat: function (message, opts) {
         opts = opts || {};
@@ -137,12 +141,22 @@
 
     listings: {
       search: c("listings.search"),
-      get: function (id) {
-        return request("listings.get", { id: id });
+      /** Plain-language inquiry → filters + results, no AI: grid.listings.ask("2BR condo for rent in BGC under 60k") */
+      ask: function (text, opts) {
+        var o = opts || {};
+        return request("listings.ask", { text: text, limit: o.limit, offset: o.offset, sort: o.sort });
+      },
+      facets: c("listings.facets"),
+      import: function (fileName, csv) {
+        return request("listings.import", { fileName: fileName, csv: csv }, 120000);
+      },
+      imports: c("listings.imports"),
+      get: function (code) {
+        return request("listings.get", { code: code });
       },
       save: c("listings.save"),
-      delete: function (id) {
-        return request("listings.delete", { id: id });
+      delete: function (code) {
+        return request("listings.delete", { code: code });
       },
     },
 
