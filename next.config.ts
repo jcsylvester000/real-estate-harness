@@ -38,7 +38,9 @@ const nextConfig: NextConfig = {
   // Dev-only Next.js badge: top-right of the desktop, away from app windows' inputs (never shown in production).
   devIndicators: { position: "top-right" },
   reactStrictMode: true,
-  serverExternalPackages: ["@node-rs/argon2", "@electric-sql/pglite"],
+  serverExternalPackages: ["@node-rs/argon2", "@electric-sql/pglite", "pdfjs-dist"],
+  // The research harness reads PDFs on the server; pdf.js loads its worker file at run time.
+  outputFileTracingIncludes: { "/api/**": ["./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"] },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

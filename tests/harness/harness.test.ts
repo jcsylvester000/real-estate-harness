@@ -52,7 +52,8 @@ test("stops at the tool step cap", async () => {
   const provider = new ScriptedProvider("claude-haiku-5-5", [loop, loop, loop, loop]);
   const h = new RealEstateHarness({ maxToolSteps: 3 });
   const r = await h.chat(provider, "loop", "s3");
-  assert.equal(r.steps, 3);
+  // Three tool steps, then one final answer with tools switched off.
+  assert.equal(r.steps, 4);
   assert.ok(r.warnings.some(w => w.includes("maximum tool steps")));
 });
 

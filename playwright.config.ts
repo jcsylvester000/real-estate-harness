@@ -35,6 +35,9 @@ export default defineConfig({
       ANTHROPIC_API_KEY: "",
       OPENAI_API_KEY: "",
       GEMINI_API_KEY: "",
+      // Research reads the local stand-in search and pages (tests/e2e/stub-ai.ts).
+      SEARXNG_URL: "http://127.0.0.1:4011",
+      RESEARCH_ALLOW_PRIVATE_NETWORK: "true",
     },
   },
 });

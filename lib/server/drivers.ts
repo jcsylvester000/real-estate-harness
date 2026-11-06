@@ -27,6 +27,7 @@ import * as listingsSvc from "./services/listings";
 import * as lendersSvc from "./services/lenders";
 import * as docsSvc from "./services/documents";
 import * as teaserSvc from "./services/teasers";
+import type { AppBridge } from "@/lib/agent/app-tools";
 import { listingForm } from "@/lib/listings/manage";
 import { searchInput } from "@/lib/listings/search";
 import { buyerInput } from "@/lib/listings/buyers";
@@ -62,8 +63,8 @@ export const METHODS = {
   "kv.list": m({ schema: z.object({ prefix: z.string().max(200).optional() }), run: (a, x) => kvSvc.kvList(a.user.id, a.app.id, x.prefix) }),
 
   "ai.chat": m({
-    schema: z.object({ message: z.string(), sessionId: z.string().max(100).optional(), provider: z.string().max(60).optional(), tier: z.enum(["balanced", "budget"]).optional() }),
-    run: (a, x) => ai.chat(a.user.id, a.app.id, x),
+    schema: z.object({ message: z.string(), sessionId: z.string().max(100).optional(), provider: z.string().max(60).optional(), tier: z.enum(["balanced", "budget"]).optional(), mode: z.enum(ai.MODES).optional() }),
+    run: (a, x) => ai.chat(a.user.id, a.app.id, x, appBridge(a)),
   }),
   "ai.providers": m({ schema: none, run: (a) => ai.providerList(a.user.id) }),
   "ai.status": m({ schema: none, run: (a) => ai.aiStatus(a.user.id) }),
@@ -239,7 +240,25 @@ export function methodKind(method: string): "command" | "query" {
  * The driver gate. Order: known method → permission for this app → role → argument schema → service.
  * Built-in apps hold the permissions they declare; third-party apps also need the user's grant.
  */
-export async function callDriver(actor: Actor, method: string, params: unknown) {
+/**
+ * The Agent harness reaches the apps through this bridge: the same gate as callDriver, as the app the person
+ * is using. AI chat itself is never reachable from a tool.
+ */
+function appBridge(actor: Actor): AppBridge {
+  const defs = METHODS as Record<string, Method<z.ZodType>>;
+  return {
+    allowed: (method: string) => {
+      if (!(method in defs) || !(method in METHOD_PERMISSION) || method.startsWith("ai.")) return false;
+      const perm = METHOD_PERMISSION[method];
+      const def = defs[method]!;
+      return (!perm || actor.app.permissions.includes(perm)) && (!def.roles || def.roles.includes(actor.user.role)) && !def.desktopOnly;
+    },
+    schema: (method: string) => defs[method]?.schema,
+    call: (method: string, params: unknown): Promise<unknown> => (method.startsWith("ai.") ? Promise.reject(denied()) : callDriver(actor, method, params)),
+  };
+}
+
+export async function callDriver(actor: Actor, method: string, params: unknown): Promise<unknown> {
   const def = (METHODS as Record<string, Method<z.ZodType>>)[method];
   if (!def || !(method in METHOD_PERMISSION)) throw new DriverError("unknown_method", `Unknown method "${method}".`, 404);
   const perm = METHOD_PERMISSION[method];

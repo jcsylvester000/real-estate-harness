@@ -24,7 +24,8 @@ export class GeminiProvider implements ModelProvider {
     const body = {
       systemInstruction: { parts: [{ text: req.system }] },
       contents: toGeminiContents(req.messages),
-      tools: [{ functionDeclarations: req.tools.map(t => ({ name: t.name, description: t.description, parameters: t.parameters })) }],
+      ...(req.tools.length ? { tools: [{ functionDeclarations: req.tools.map(t => ({ name: t.name, description: t.description, parameters: t.parameters })) }] } : {}),
+      ...(req.tools.length && req.toolChoice === "none" ? { toolConfig: { functionCallingConfig: { mode: "NONE" } } } : {}),
       generationConfig: {
         maxOutputTokens: req.maxOutputTokens,
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),

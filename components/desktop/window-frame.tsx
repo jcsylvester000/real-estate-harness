@@ -25,7 +25,7 @@ export const TASKBAR_H = 52;
 
 /** Built-in apps share the site origin; third-party apps get an opaque origin (no allow-same-origin). */
 const SANDBOX = {
-  builtin: "allow-scripts allow-forms allow-same-origin allow-downloads allow-popups",
+  builtin: "allow-scripts allow-forms allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox",
   external: "allow-scripts allow-forms allow-downloads allow-popups",
 };
 

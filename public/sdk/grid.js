@@ -119,7 +119,7 @@
       /** One harness turn: reply, tool trace, tokens, cost (US$ and ₱), warnings. */
       chat: function (message, opts) {
         opts = opts || {};
-        return request("ai.chat", { message: message, sessionId: opts.sessionId, provider: opts.provider, tier: opts.tier }, LONG_TIMEOUT);
+        return request("ai.chat", { message: message, sessionId: opts.sessionId, provider: opts.provider, tier: opts.tier, mode: opts.mode }, LONG_TIMEOUT);
       },
       providers: c("ai.providers"),
       sessions: c("ai.sessions"),

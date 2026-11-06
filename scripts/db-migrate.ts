@@ -7,10 +7,26 @@ import { config } from "dotenv";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { migrate } from "drizzle-orm/neon-serverless/migrator";
+import { Pool as PgPool } from "pg";
+import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
+import { migrate as migratePg } from "drizzle-orm/node-postgres/migrator";
+import { pgOptions, isPlainPostgres } from "../lib/db/driver";
 
 config({ path: ".env.local" });
 
 async function run(label: string, url: string, folder: string, schema?: string) {
+  // Plain PostgreSQL (DigitalOcean, RDS, a VPS or Docker) uses node-postgres; Neon its serverless driver.
+  if (isPlainPostgres(url)) {
+    const pg = new PgPool(pgOptions(url, 1));
+    try {
+      const started = Date.now();
+      await migratePg(drizzlePg({ client: pg }), { migrationsFolder: folder, ...(schema ? { migrationsSchema: schema } : {}) });
+      console.log(`db:migrate ${label} done in ${Date.now() - started} ms (PostgreSQL).`);
+    } finally {
+      await pg.end();
+    }
+    return;
+  }
   const pool = new Pool({ connectionString: url, max: 1 });
   try {
     const started = Date.now();

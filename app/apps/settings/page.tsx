@@ -113,6 +113,13 @@ function AiSetup({ grid }: { grid: GridSDK }) {
     grid.ai.keys.list().then(setKeys).catch(() => {});
   };
   useEffect(load, [grid]);
+  const [search, setSearch] = useState<string | undefined>();
+  useEffect(() => {
+    grid.ai
+      .status()
+      .then((st) => setSearch(st.researchSearch))
+      .catch(() => {});
+  }, [grid]);
   const remove = async (k: SavedAiKey) => {
     if (!(await grid.ui.confirm(`Remove “${k.name}”?`, { danger: true, okLabel: "Remove" }))) return;
     await grid.ai.keys.remove(k.id).catch((e) => grid.ui.notify(errText(e), { tone: "bad" }));
@@ -125,6 +132,22 @@ function AiSetup({ grid }: { grid: GridSDK }) {
         <p className="mt-1 text-sm text-ink-2">
           Grid Agentic works fully without AI. To use AI, add your own key: here or from Deal Desk&apos;s AI menu (Add key…). Each key is tested before it is added, then you pick it in Deal Desk whenever you want AI.
         </p>
+      </section>
+      <section className="rounded-xl border border-line bg-white p-4" data-testid="ai-modes">
+        <h2 className="font-sans text-sm font-semibold">What an AI key adds in Deal Desk</h2>
+        <ul className="mt-2 space-y-1.5 text-sm text-ink-2">
+          <li>
+            <strong>Agent:</strong> works in Grid&apos;s apps for you: searches listings, matches buyers, compares lenders, reads your documents and notes, saves notes and makes Property Teaser presentations, with the same permissions as the app.
+          </li>
+          <li>
+            <strong>Research:</strong> researches Philippine real estate on the web (zonal values, BIR taxes and filings, market data, developers, laws), reads official sources first and cites every source.
+          </li>
+        </ul>
+        {search && (
+          <p className="mt-2 text-xs text-muted">
+            Research web search: {search === "duckduckgo" ? "DuckDuckGo (free, no key; may be rate limited; an admin can set BRAVE_SEARCH_API_KEY or TAVILY_API_KEY for steadier results)" : search === "brave" ? "Brave Search API" : search === "tavily" ? "Tavily" : "SearXNG"}.
+          </p>
+        )}
       </section>
       <section>
         <div className="mb-2 flex items-center">
@@ -146,10 +169,10 @@ function AiSetup({ grid }: { grid: GridSDK }) {
                     {k.label} · {k.model} · key ••••{k.keyHint}
                   </span>
                 </span>
-                <button type="button" className="text-xs underline" onClick={() => setDialog({ edit: k })}>
+                <button type="button" className="text-xs underline" aria-label={`Edit ${k.name}`} onClick={() => setDialog({ edit: k })}>
                   Edit
                 </button>
-                <button type="button" className="text-xs text-bad underline" onClick={() => remove(k)}>
+                <button type="button" className="text-xs text-bad underline" aria-label={`Remove ${k.name}`} onClick={() => remove(k)}>
                   Remove
                 </button>
               </li>

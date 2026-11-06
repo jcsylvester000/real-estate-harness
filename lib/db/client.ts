@@ -10,6 +10,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle as drizzleNeon, type NeonDatabase } from "drizzle-orm/neon-serverless";
 import * as schema from "./schema";
+import { pgOptions, isPlainPostgres } from "./driver";
 
 export type DB = NeonDatabase<typeof schema>;
 export type Tx = Parameters<Parameters<DB["transaction"]>[0]>[0];
@@ -42,8 +43,13 @@ async function createPglite(): Promise<DB> {
   return instance;
 }
 
-function createNeon(url: string | undefined): DB {
+async function createNeon(url: string | undefined): Promise<DB> {
   if (!url) throw new Error("Missing environment variable DATABASE_URL");
+  if (isPlainPostgres(url)) {
+    const { Pool: PgPool } = await import("pg");
+    const { drizzle } = await import("drizzle-orm/node-postgres");
+    return drizzle({ client: new PgPool(pgOptions(url, 10)), schema }) as unknown as DB;
+  }
   if (typeof WebSocket !== "undefined") neonConfig.webSocketConstructor = WebSocket;
   const pool = new Pool({ connectionString: url, max: 5 });
   return drizzleNeon({ client: pool, schema });

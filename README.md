@@ -11,11 +11,11 @@ a browser desktop, windows, iframe apps and an app SDK. No Puter code is used (P
                                        │ (third-party apps)                        │   (Claude / OpenAI-compatible / Gemini) or Query Engine (no AI)
 ```
 
-## What is inside (v0.6)
+## What is inside (v0.7)
 
 | Built-in app | What it does |
 |---|---|
-| **Deal Desk AI** | Type **/** to pick a feature (search property, buyer matching, calculator, listings, lenders, notes, documents) and answer short follow-ups by clicking; or just ask. It predicts the next step ("Up next" chips, suggested commands, ghost-text completion). Ask about costs, loans, listings, buyer matches and your documents. With an AI key it uses Claude, OpenAI-compatible models (OpenRouter) or Gemini. **Without a key it uses the Query Engine** (below). It shows the calculations used and the cost in pesos, and saves conversations. Upload PDFs, Word files or photos with 📎. **/ → Property Teaser** makes a presentation or trailer from what you type: Guided (pick what to add, one step at a time) or Customize (everything in one go, with pictures). It fixes spelling, shows the details as an editable sheet, then makes a **PowerPoint**, an **Excel** sheet, or opens it in Property Teaser. |
+| **Deal Desk AI** | **With your AI key, two modes:** **Agent** works in Grid's apps for you (listings, buyer matching, lenders, documents, notes, Property Teaser) through the same permission checks as the apps, and **Research** researches Philippine real estate on the web (zonal values, BIR taxes and filings, market data, developers, laws), official sources first, every fact cited [S1] with a sources panel. See [docs/RESEARCH_AND_AGENT.md](docs/RESEARCH_AND_AGENT.md). Type **/** to pick a feature (search property, buyer matching, calculator, listings, lenders, notes, documents) and answer short follow-ups by clicking; or just ask. It predicts the next step ("Up next" chips, suggested commands, ghost-text completion). Ask about costs, loans, listings, buyer matches and your documents. With an AI key it uses Claude, OpenAI-compatible models (OpenRouter) or Gemini. **Without a key it uses the Query Engine** (below). It shows the calculations used and the cost in pesos, and saves conversations. Upload PDFs, Word files or photos with 📎. **/ → Property Teaser** makes a presentation or trailer from what you type: Guided (pick what to add, one step at a time) or Customize (everything in one go, with pictures). It fixes spelling, shows the details as an editable sheet, then makes a **PowerPoint**, an **Excel** sheet, or opens it in Property Teaser. |
 | **Buyer Matching** | Describe the buyer (kind, place, budget, bedrooms, size, purpose, features) and set how much each criterion matters (must have / important / nice to have / ignore). Every listing gets a **match score from 1 to 10** with a "why this score" breakdown. Save buyers; saved buyers are scored against every listing automatically (two-way). |
 | **Property Teaser** | Design **presentations and teaser trailers** from 30 templates (20 decks, 10 trailers, landscape and vertical). Add your logo, brand colours and fonts, details, photos (upload, free web images, links), features and amenities. "Write it for me" turns your notes into a tagline, description and highlights without AI. Canva-style editing: text, shapes, icons, photos, snapping, animations. Export to **PowerPoint, PDF, Word, MP4 video** or PNG. **Save design** keeps a look (layout, colours, fonts, logo, contact) and reuses it for any property; **Use for listings…** makes one project per listing (up to 20 at once) with the same design and each listing's details. See [docs/PROPERTY_TEASER.md](docs/PROPERTY_TEASER.md). |
 | **Calculators** | **Home loan (lenders):** compare Pag-IBIG and 13 banks/in-house financing, or pick one lender. Rates come from a researched, editable table (**Lender rates** tab, with sources and as-of dates). Also taxes and fees, loan payment, commission, Maceda refund and foreign-buyer rules. No AI, no cost. |
@@ -87,8 +87,8 @@ Any OpenRouter model with tool calling works, for example `anthropic/claude-haik
 
 | Command | What it does |
 |---|---|
-| `npm test` | 172 unit and integration tests (in-memory Postgres; no network) |
-| `npm run e2e` | 26 browser tests on a production build (`npm run build` first), including PDF and OCR uploads |
+| `npm test` | 187 unit and integration tests (in-memory Postgres; no network) |
+| `npm run e2e` | 28 browser tests on a production build (`npm run build` first), including PDF and OCR uploads |
 | `npm run projections:rebuild` | Rebuild the listings read models (CQRS) |
 | `npm run listings:import -- file.csv` | Import a GRID listings export |
 | `npm run lint` / `npm run typecheck` | Code checks |
@@ -134,6 +134,10 @@ lib/harness/           PH Real Estate Harness v0.1.0 (ported) + Demo provider
 lib/db/                Drizzle schema and client (Neon; PGlite for tests) · drizzle/ migrations
 public/sdk/grid.js     the app SDK
 ```
+
+## Deploy anywhere
+
+Netlify (configured), Vercel, DigitalOcean (App Platform or Droplet), Hostinger (VPS or Node.js web apps), any VPS with Docker (`Dockerfile`, `docker-compose.yml`), Render, Railway or Fly.io. Neon databases use Neon's serverless driver; any other PostgreSQL uses node-postgres automatically (`DB_DRIVER`, `DATABASE_SSL`). Step-by-step guides: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Before production
 

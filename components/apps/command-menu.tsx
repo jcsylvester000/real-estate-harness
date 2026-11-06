@@ -8,6 +8,7 @@
  */
 import {
   ArrowLeft,
+  BookOpenCheck,
   Building2,
   Calculator,
   Clapperboard,
@@ -46,7 +47,7 @@ export interface IntakeSpec {
   designId?: string;
   designName?: string;
 }
-type Done = { send: string } | { fill: string } | { open: { app: string; args?: Record<string, unknown> } } | { intake: IntakeSpec };
+type Done = { send: string } | { fill: string } | { open: { app: string; args?: Record<string, unknown> } } | { intake: IntakeSpec } | { research: string };
 export interface Step {
   title: string;
   placeholder: string;
@@ -95,7 +96,7 @@ const amountOpt = (q: string, verb = "Use"): Opt | null => {
 };
 const textOpt = (q: string, verb: string): Opt | null => (q.trim().length > 1 ? { id: `txt-${q}`, label: `${verb} “${q.trim()}”`, value: q.trim(), icon: CornerDownLeft } : null);
 
-export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t: string) => void; fill: (t: string) => void; open?: (app: string, args?: Record<string, unknown>) => void; intake?: (i: IntakeSpec) => void }) {
+export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t: string) => void; fill: (t: string) => void; open?: (app: string, args?: Record<string, unknown>) => void; intake?: (i: IntakeSpec) => void; research?: (text: string) => void }) {
   const [stack, setStack] = useState<{ step: Step; crumb: string }[]>([]);
   const [rootOpen, setRootOpen] = useState(false);
   const [options, setOptionsRaw] = useState<Opt[]>([]);
@@ -379,6 +380,53 @@ export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t
         }),
       },
       {
+        id: "research",
+        label: "Research",
+        hint: "Zonal values, BIR taxes and filings, market, developers, laws · with sources (AI key)",
+        icon: BookOpenCheck,
+        keywords: "research zonal value bir tax filing cgt dst ecar market industry developer law rules sources",
+        start: () => {
+          const where = (title: string, then: (place: string) => Step | Done): Step => ({
+            title,
+            placeholder: "Street or building, barangay, city",
+            load: async (q) => {
+              const f = await facets();
+              return filter((f.byCity ?? []).slice(0, 12).map((c) => ({ id: c.city, label: c.city, hint: c.province ?? "", value: c.city })), q);
+            },
+            free: (q) => textOpt(q, "Use"),
+            pick: (o) => then(String(o.value)),
+          });
+          const ask = (title: string, placeholder: string, examples: string[], then: (text: string) => Done): Step => ({
+            title,
+            placeholder,
+            load: (q) => filter(examples.map((e) => ({ id: e, label: e, value: e })), q),
+            free: (q) => textOpt(q, "Research"),
+            pick: (o) => then(String(o.value)),
+          });
+          return choice("Research what?", [
+            ["zonal", "Zonal value", "BIR zonal value per sqm, RDO and Department Order"],
+            ["tax", "Taxes and BIR filings for a sale", "CGT, DST, transfer tax, forms, deadlines, eCAR"],
+            ["market", "Market and industry", "Prices, supply, take-up, outlook from the latest reports"],
+            ["developer", "Developer or project check", "License to sell, track record, news"],
+            ["law", "Law or rule", "RESA, Maceda, PD 957, condo law, foreign ownership…"],
+          ], (topic) => {
+            if (topic === "zonal")
+              return where("Where is the property?", (place) => ({ research: `Find the current BIR zonal value for ${place}. Give the value per sqm, the classification, the RDO and the Department Order with its effectivity date.` }));
+            if (topic === "tax")
+              return priceStep("Selling price", (price, label) =>
+                where("Where is the property?", (place) => ({ research: `What taxes, BIR forms and deadlines apply when an individual sells a ${/^₱/.test(label) ? label : peso(price)} property (capital asset) in ${place}? Cover CGT, DST, local transfer tax, who usually pays, BIR forms and deadlines, and the ONETT/eCAR steps.` })),
+              );
+            if (topic === "market")
+              return choice("Which segment?", [["residential condominium", "Residential condo"], ["house and lot", "House and lot"], ["office", "Office"], ["industrial and warehouse", "Industrial / warehouse"], ["retail", "Retail"], ["hotel and leisure", "Hotel / leisure"]], (seg) =>
+                where("Which area?", (place) => ({ research: `Research the latest ${seg} market in ${place}: prices or rents, supply, take-up or vacancy, and the outlook. Use the latest official and consultancy reports.` })),
+              );
+            if (topic === "developer")
+              return ask("Which developer or project?", "e.g. a developer or project name", [], (name) => ({ research: `Research ${name}: the developer, DHSUD registration and license to sell, track record, recent news and any reported issues.` }));
+            return ask("What do you want to know?", "Type your question", ["Can a foreigner buy a condo unit, and what limits apply?", "What does the Maceda Law give an installment buyer who defaults?", "What must a pre-selling project have before it can sell (PD 957)?", "Who may receive a commission under RESA (RA 9646)?"], (q) => ({ research: q }));
+          });
+        },
+      },
+      {
         id: "teaser",
         label: "Property Teaser",
         hint: "Design a presentation or teaser trailer",
@@ -526,6 +574,11 @@ export function useCommandMenu(grid: GridSDK, ctx: DeskContext, done: { send: (t
       if ("open" in next) {
         close();
         done.open?.(next.open.app, next.open.args);
+        return "";
+      }
+      if ("research" in next) {
+        close();
+        done.research?.(next.research);
         return "";
       }
       if ("intake" in next) {

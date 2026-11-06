@@ -1,6 +1,8 @@
 "use client";
 import {
   ArrowUp,
+  BookOpenCheck,
+  Bot,
   Building2,
   Calculator,
   ChevronRight,
@@ -9,6 +11,7 @@ import {
   History,
   NotebookPen,
   Paperclip,
+  Presentation,
   Plus,
   Save,
   Search,
@@ -25,12 +28,13 @@ import { AppFrame } from "@/components/apps/app-frame";
 import { AddKeyDialog } from "@/components/apps/add-key-dialog";
 import { CommandPanel, useCommandMenu, type DeskContext, type IntakeSpec, type Opt } from "@/components/apps/command-menu";
 import { TeaserIntake } from "@/components/apps/teaser-intake";
+import { ActionButtons, SourceList, linkCitations } from "@/components/apps/research-view";
 import { ACCEPT, extractDocument } from "@/components/apps/doc-extract";
 import { Markdown } from "@/components/apps/markdown";
 import { predict } from "@/components/apps/predict";
 import { ResultView, php } from "@/components/apps/result-view";
 import { errText } from "@/components/apps/use-grid";
-import type { ChatTurn, DocSummary, GridSDK, ProviderInfo } from "@/lib/sdk/types";
+import type { AppAction, ChatTurn, DocSummary, GridSDK, ProviderInfo } from "@/lib/sdk/types";
 
 interface Msg {
   id: string;
@@ -51,6 +55,8 @@ const STARTERS: { cmd: string; label: string; hint: string; icon: LucideIcon; to
   { cmd: "listings", label: "Listings", hint: "Details, buyers, loans, costs", icon: Building2, tone: "from-panel/15" },
   { cmd: "notes", label: "Notes", hint: "Summaries and action items", icon: NotebookPen, tone: "from-bronze/20" },
   { cmd: "docs", label: "Documents", hint: "PDF, Word, photos (OCR)", icon: FileText, tone: "from-info/15" },
+  { cmd: "teaser", label: "Property Teaser", hint: "Presentation or trailer from your notes", icon: Presentation, tone: "from-[#7c3a5b]/15" },
+  { cmd: "research", label: "Research", hint: "Zonal values, BIR, market · cited (AI key)", icon: BookOpenCheck, tone: "from-ok/15" },
 ];
 
 const QUICK = [
@@ -81,7 +87,7 @@ function listingsIn(turn: ChatTurn): DeskContext["recent"] {
   return out;
 }
 
-function Turn({ m, onSave, onAsk }: { m: Msg; onSave: (m: Msg) => void; onAsk: (text: string) => void }) {
+function Turn({ m, onSave, onAsk, onOpen }: { m: Msg; onSave: (m: Msg) => void; onAsk: (text: string) => void; onOpen: (a: AppAction) => void }) {
   if (m.role === "user")
     return (
       <div className="ga-rise flex justify-end">
@@ -101,7 +107,14 @@ function Turn({ m, onSave, onAsk }: { m: Msg; onSave: (m: Msg) => void; onAsk: (
   return (
     <article className="ga-rise group relative max-w-full overflow-hidden rounded-2xl border border-line bg-white p-4 pl-5 shadow-[var(--shadow-card)]">
       <span className="absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-gradient-to-b from-bronze via-gold to-transparent" aria-hidden />
-      <Markdown text={(chips.length ? m.content.replace(/\n\n\*\*Next:\*\*[^\n]*/, "") : m.content) || "_(no reply text)_"} className="text-sm" />
+      {t?.mode && (
+        <p className={`mb-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${t.mode === "research" ? "bg-info-soft text-info" : "bg-bronze-soft text-bronze-ink"}`}>
+          {t.mode === "research" ? <BookOpenCheck size={11} aria-hidden /> : <Bot size={11} aria-hidden />} {t.mode === "research" ? "Research" : "Agent"}
+        </p>
+      )}
+      <Markdown text={linkCitations((chips.length ? m.content.replace(/\n\n\*\*Next:\*\*[^\n]*/, "") : m.content) || "_(no reply text)_", t?.sources)} className="text-sm" />
+      {t?.actions && t.actions.length > 0 && <ActionButtons actions={t.actions} onOpen={onOpen} />}
+      {t?.mode === "research" && <SourceList sources={t.sources ?? []} />}
       {t && t.warnings.length > 0 && (
         <ul className="mt-3 space-y-1">
           {t.warnings.map((w, i) => (
@@ -115,7 +128,7 @@ function Turn({ m, onSave, onAsk }: { m: Msg; onSave: (m: Msg) => void; onAsk: (
       {t && t.toolTrace.length > 0 && (
         <details className="mt-3 rounded-xl border border-line bg-sand/60 text-sm">
           <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-medium text-ink-2">
-            <Wrench size={13} aria-hidden /> Calculations used: {t.toolTrace.map((x) => x.name).join(", ")}
+            <Wrench size={13} aria-hidden /> {t.mode === "research" ? `Research steps (${t.toolTrace.length})` : t.mode === "agent" ? "Tools used" : "Calculations used"}: {[...new Set(t.toolTrace.map((x) => x.name))].join(", ")}
           </summary>
           <div className="space-y-3 border-t border-line bg-white p-3">
             {t.toolTrace.map((x, i) => (
@@ -158,16 +171,23 @@ function Turn({ m, onSave, onAsk }: { m: Msg; onSave: (m: Msg) => void; onAsk: (
 }
 
 /** Animated "working" indicator. */
-function Thinking({ engine }: { engine: boolean }) {
+function Thinking({ engine, mode }: { engine: boolean; mode: Mode }) {
   return (
     <div role="status" className="ga-rise flex items-center gap-3 rounded-2xl border border-line bg-white/70 px-4 py-3 text-sm">
       <span className="ga-orb" aria-hidden />
-      <span className="ga-shimmer-text font-medium">{engine ? "Running GRID tools…" : "Thinking with GRID's calculators…"}</span>
+      <span className="ga-shimmer-text font-medium">{engine ? "Running GRID tools…" : mode === "research" ? "Researching: searching and reading sources (up to a minute)…" : "Working with GRID's apps and calculators…"}</span>
     </div>
   );
 }
 
+type Mode = "agent" | "research";
+
 function DealDesk({ grid }: { grid: GridSDK }) {
+  const [mode, setModeRaw] = useState<Mode>("agent");
+  const setMode = (m: Mode) => {
+    setModeRaw(m);
+    grid.kv.set("mode", m).catch(() => {});
+  };
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [provider, setProvider] = useState("");
   const [tier, setTier] = useState<"balanced" | "budget">("balanced");
@@ -187,7 +207,8 @@ function DealDesk({ grid }: { grid: GridSDK }) {
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const boxRef = useRef<HTMLTextAreaElement>(null);
-  const sendRef = useRef<(t: string) => void>(() => {});
+  const sendRef = useRef<(t: string, mode?: Mode) => void>(() => {});
+  const providerRef = useRef("");
 
   // -- conversation context for "/" pickers and predictions --
   const ctx: DeskContext = useMemo(() => {
@@ -209,6 +230,14 @@ function DealDesk({ grid }: { grid: GridSDK }) {
     send: (t) => sendRef.current(t),
     open: (app, args) => grid.ui.openApp(app, args),
     intake: (spec) => setMsgs((m) => [...m, { id: mid(), role: "assistant", content: "", intake: spec }]),
+    research: (text) => {
+      if (providerRef.current === "demo" || !providerRef.current) {
+        setMsgs((m) => [...m, { id: mid(), role: "error", content: "Research needs an AI key: it searches the web and cites its sources. Pick your AI in the menu at the top right, or choose ＋ Add key…" }]);
+        return;
+      }
+      setMode("research");
+      sendRef.current(text, "research");
+    },
     fill: (t) => {
       setInput(t);
       requestAnimationFrame(() => boxRef.current?.focus());
@@ -221,6 +250,10 @@ function DealDesk({ grid }: { grid: GridSDK }) {
   useEffect(() => {
     loadDocs();
     loadSessions();
+    grid.kv
+      .get<string>("mode")
+      .then((m) => (m === "research" || m === "agent") && setModeRaw(m))
+      .catch(() => {});
     grid.kv
       .get<string[]>("recent-asks")
       .then((r) => setRecentAsks(Array.isArray(r) ? r : []))
@@ -276,7 +309,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
     loadDocs();
   };
 
-  const send = async (text: string) => {
+  const send = async (text: string, modeFor?: Mode) => {
     const message = text.trim();
     if (!message || busy) return;
     if (message.startsWith("/")) {
@@ -290,7 +323,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
     grid.kv.set("recent-asks", asks).catch(() => {});
     setBusy(true);
     try {
-      const turn = await grid.ai.chat(message, { sessionId, provider: provider || undefined, tier });
+      const turn = await grid.ai.chat(message, { sessionId, provider: provider || undefined, tier, mode: provider === "demo" ? undefined : modeFor ?? mode });
       setSessionId(turn.sessionId);
       setSpent({ today: turn.spentTodayPhp, cap: turn.dailyCapPhp });
       setMsgs((m) => [...m, { id: mid(), role: "assistant", content: turn.reply, turn }]);
@@ -303,6 +336,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
     }
   };
   sendRef.current = send;
+  providerRef.current = provider;
 
   const openSession = async (id: string) => {
     try {
@@ -523,7 +557,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
 
         <div className="min-h-0 flex-1 overflow-auto px-4 py-5" aria-live="polite">
           {msgs.length === 0 ? (
-            <div className="mx-auto max-w-2xl pt-4 text-center">
+            <div className="mx-auto max-w-3xl pt-4 text-center">
               <p className="eyebrow ga-rise">{engine ? "Deal Desk · Query Engine (no AI)" : "Deal Desk AI"}</p>
               <h1 className="ga-rise mt-2 text-3xl sm:text-4xl" style={{ animationDelay: "60ms" }}>
                 What are we <span className="ga-gradient-text">working on</span>?
@@ -531,7 +565,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
               <p className="ga-rise mx-auto mt-2 max-w-lg text-sm text-muted" style={{ animationDelay: "120ms" }}>
                 Type <kbd className="ga-kbd">/</kbd> to pick a feature and I&apos;ll ask the rest, or just ask in English, Filipino or Taglish. Answers come from GRID&apos;s calculators, rulebook, listings and your documents.
               </p>
-              <div className="mt-6 grid grid-cols-2 gap-2.5 text-left sm:grid-cols-3">
+              <div className="mt-6 grid grid-cols-2 gap-2.5 text-left sm:grid-cols-4">
                 {STARTERS.map((s, i) => {
                   const Icon = s.icon;
                   return (
@@ -575,10 +609,10 @@ function DealDesk({ grid }: { grid: GridSDK }) {
                 m.intake ? (
                   <TeaserIntake key={m.id} grid={grid} spec={m.intake} onClose={() => setMsgs((ms) => ms.filter((x) => x.id !== m.id))} />
                 ) : (
-                  <Turn key={m.id} m={m} onSave={save} onAsk={send} />
+                  <Turn key={m.id} m={m} onSave={save} onAsk={(x) => send(x)} onOpen={(a) => grid.ui.openApp(a.app, a.args)} />
                 ),
               )}
-              {busy && <Thinking engine={engine} />}
+              {busy && <Thinking engine={engine} mode={mode} />}
               <div ref={endRef} />
             </div>
           )}
@@ -676,6 +710,31 @@ function DealDesk({ grid }: { grid: GridSDK }) {
                 >
                   <Slash size={15} aria-hidden />
                 </button>
+                <div role="radiogroup" aria-label="AI mode" className="ml-1 flex rounded-full bg-sand p-0.5" title={engine ? "Agent and Research need an AI key: pick your AI in the menu at the top right, or Add key…" : "Agent works in Grid's apps; Research searches the web and cites sources"}>
+                  {(
+                    [
+                      ["agent", Bot, "Agent"],
+                      ["research", BookOpenCheck, "Research"],
+                    ] as const
+                  ).map(([k, Icon, label]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      role="radio"
+                      aria-checked={!engine && mode === k}
+                      aria-disabled={engine}
+                      onClick={() => {
+                        if (!engine) return setMode(k);
+                        // No key yet: explain, and offer to add one (a disabled button would just ignore the tap).
+                        grid.ui.notify(`${label} needs an AI key. Add one now; the Query Engine stays available.`, { tone: "info" });
+                        setAddKey(true);
+                      }}
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${engine ? "opacity-50" : ""} ${!engine && mode === k ? "bg-navy text-cream shadow-sm" : "text-ink-2 hover:text-ink"}`}
+                    >
+                      <Icon size={12} aria-hidden /> {label}
+                    </button>
+                  ))}
+                </div>
                 <span className="ml-1 hidden truncate text-[11px] text-muted sm:inline">
                   {menu.active ? "↑↓ move · Enter pick · ⌫ back · Esc close" : ghost ? "Tab to accept the suggestion" : "/ for commands · Shift+Enter for a new line"}
                 </span>

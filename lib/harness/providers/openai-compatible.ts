@@ -33,7 +33,8 @@ export class OpenAICompatibleProvider implements ModelProvider {
       ...(isOpenAI ? { max_completion_tokens: req.maxOutputTokens } : { max_tokens: req.maxOutputTokens }),
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       messages: [{ role: "system", content: req.system }, ...toOpenAIMessages(req.messages)],
-      tools: req.tools.map(t => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })),
+      ...(req.tools.length ? { tools: req.tools.map(t => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) } : {}),
+      ...(req.tools.length && req.toolChoice === "none" ? { tool_choice: "none" } : {}),
       // OpenRouter: return the real charge for this call in usage.cost (US$).
       ...(isOpenRouter ? { usage: { include: true } } : {}),
     };

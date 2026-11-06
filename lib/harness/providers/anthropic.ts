@@ -32,6 +32,7 @@ export class AnthropicProvider implements ModelProvider {
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       system: [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }],
       tools,
+      ...(req.toolChoice === "none" && tools.length ? { tool_choice: { type: "none" } } : {}),
       messages: toAnthropicMessages(req.messages),
     };
     const data = await postJson(

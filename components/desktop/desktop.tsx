@@ -48,7 +48,17 @@ export interface AiState {
   providers: string[];
 }
 
-export function Desktop({ user, initialApps, initialWallpaper, initialIcons, ai }: { user: DesktopUser; initialApps: AppInfo[]; initialWallpaper: string; initialIcons: IconLayout; ai: AiState }) {
+export function Desktop({ user, initialApps, initialWallpaper, initialIcons, ai: initialAi }: { user: DesktopUser; initialApps: AppInfo[]; initialWallpaper: string; initialIcons: IconLayout; ai: AiState }) {
+  // AI keys added or removed in an app update the taskbar badge right away.
+  const [ai, setAi] = useState(initialAi);
+  const refreshAi = useCallback(() => {
+    driverCall("desktop", "ai.status", {})
+      .then((st) => {
+        const x = st as { realAi: boolean; providers: { id: string; label: string; configured: boolean }[] };
+        setAi({ realAi: x.realAi, providers: x.providers.filter((p) => p.configured && p.id !== "demo").map((p) => p.label) });
+      })
+      .catch(() => {});
+  }, []);
   const icons = useIconLayout(initialIcons);
   const [apps, setApps] = useState<AppInfo[]>(initialApps);
   const [wins, setWins] = useState<Win[]>([]);
@@ -284,7 +294,9 @@ export function Desktop({ user, initialApps, initialWallpaper, initialIcons, ai 
       try {
         const result = d.method.startsWith("ui.") ? await handleUi(win, d.method, params) : await (async () => {
           await ensurePermission(win!.app, d.method);
-          return driverCall(win!.app.id, d.method, params);
+          const out = await driverCall(win!.app.id, d.method, params);
+          if (d.method === "ai.keys.save" || d.method === "ai.keys.remove") refreshAi();
+          return out;
         })();
         reply({ type: "res", id: d.id, ok: true, result });
       } catch (err) {
@@ -294,7 +306,7 @@ export function Desktop({ user, initialApps, initialWallpaper, initialIcons, ai 
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [ensurePermission, handleUi, user.displayName, user.role, ai.realAi]);
+  }, [ensurePermission, handleUi, user.displayName, user.role, ai.realAi, refreshAi]);
 
   // -- Keyboard: Escape closes menus --
   useEffect(() => {
@@ -318,7 +330,7 @@ export function Desktop({ user, initialApps, initialWallpaper, initialIcons, ai 
 
   return (
     <div
-      className={`${wallpaper} relative h-dvh w-full overflow-hidden`}
+      className={`${wallpaper} relative h-dvh w-full overflow-clip`}
       onContextMenu={(e) => {
         if ((e.target as HTMLElement).closest("[data-desktop-surface]")) {
           e.preventDefault();
@@ -530,7 +542,7 @@ export function Desktop({ user, initialApps, initialWallpaper, initialIcons, ai 
           className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-white/15 px-2.5 text-[11px] hover:bg-white/10"
         >
           <span className={`size-2 rounded-full ${ai.realAi ? "bg-[#4ade80]" : "bg-gold"}`} aria-hidden />
-          <span className="hidden md:inline">{ai.realAi ? `Query Engine · AI key ready` : "Query Engine (no AI)"}</span>
+          <span className="hidden md:inline">{ai.realAi ? `AI ready · ${ai.providers.length} key${ai.providers.length === 1 ? "" : "s"}` : "Query Engine (no AI)"}</span>
           <span className="sr-only md:hidden">{ai.realAi ? "AI connected" : "No AI key: Query Engine mode"}</span>
         </button>
         <time className="hidden px-2 text-right text-xs text-mist sm:block" aria-label="Manila time">

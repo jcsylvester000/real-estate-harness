@@ -41,6 +41,8 @@ export interface ModelRequest {
   tools: ToolDefinition[];
   maxOutputTokens: number;
   temperature?: number;
+  /** "none": the model must answer in text (tools stay declared so earlier tool calls remain valid). */
+  toolChoice?: "auto" | "none";
 }
 
 export interface TokenUsage {

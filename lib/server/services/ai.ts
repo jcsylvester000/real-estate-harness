@@ -21,6 +21,40 @@ import "./lenders"; // registers the editable lender rates for compare_mortgage_
 import { clearEngineState, engineTurn } from "./engine";
 import { MINE, listKeys, resolveKey } from "./ai-keys";
 import { DriverError, invalid, notFound } from "../errors";
+import { kvDel, kvGet, kvSet } from "./kv";
+import { ToolRegistry, DEFAULT_TOOLS } from "@/lib/harness";
+import { appTools, type AppAction, type AppBridge } from "@/lib/agent/app-tools";
+import { SourceLedger, type Source } from "@/lib/research/ledger";
+import { agentPrompt, researchPrompt } from "@/lib/research/prompt";
+import { researchTools } from "@/lib/research/tools";
+import { searchBackend } from "@/lib/research/search";
+
+/** Harness modes. "agent" works in Grid's apps; "research" researches PH real estate on the web with sources. Both need an AI key. */
+export const MODES = ["agent", "research"] as const;
+export type Mode = (typeof MODES)[number];
+const envNum = (k: string, d: number) => {
+  const n = Number(process.env[k]);
+  return Number.isFinite(n) && n > 0 ? n : d;
+};
+const manilaToday = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+
+/** Saved history keeps tool results short, so follow-up turns do not resend whole web pages. */
+class CompactStore implements SessionStore {
+  constructor(private inner: SessionStore) {}
+  get(id: string) {
+    return this.inner.get(id);
+  }
+  clear(id: string) {
+    return this.inner.clear(id);
+  }
+  save(id: string, messages: ChatMessage[]) {
+    return this.inner.save(id, messages.map((m) => (m.role === "tool" && m.content.length > 1500 ? { ...m, content: `${m.content.slice(0, 1500)}…(cut)` } : m)));
+  }
+}
+
+export interface SourceOut extends Source {
+  cited: boolean;
+}
 
 
 export const MAX_MESSAGE_CHARS = 4000;
@@ -81,10 +115,13 @@ export async function spentTodayPhp(userId: string) {
 }
 
 /** Whether a real AI model is available to this person (their own key, or a team key on the server). */
+/** Which web search the Research harness uses (shown in Settings). */
+export const researchStatus = () => ({ search: searchBackend() });
+
 export async function aiStatus(userId?: string) {
   const list = await providerList(userId);
   const real = list.filter((p) => p.id !== "demo" && p.configured);
-  return { realAi: real.length > 0, demo: list.some((p) => p.id === "demo" && p.configured), providers: list.map(({ id, label, configured }) => ({ id, label, configured })) };
+  return { realAi: real.length > 0, demo: list.some((p) => p.id === "demo" && p.configured), providers: list.map(({ id, label, configured }) => ({ id, label, configured })), researchSearch: searchBackend() };
 }
 
 export interface ProviderOption {
@@ -135,11 +172,12 @@ export interface ChatInput {
   sessionId?: string;
   provider?: string;
   tier?: ModelTier;
+  mode?: Mode;
 }
 
-export type ChatOutput = HarnessTurnResult & { spentTodayPhp: number; dailyCapPhp: number };
+export type ChatOutput = HarnessTurnResult & { spentTodayPhp: number; dailyCapPhp: number; mode?: Mode; sources?: SourceOut[]; actions?: AppAction[] };
 
-export async function chat(userId: string, appId: string, input: ChatInput): Promise<ChatOutput> {
+export async function chat(userId: string, appId: string, input: ChatInput, bridge?: AppBridge): Promise<ChatOutput> {
   const message = typeof input.message === "string" ? input.message.trim() : "";
   if (!message) throw invalid("Type a message first.");
   if (message.length > MAX_MESSAGE_CHARS) throw invalid(`Messages can be at most ${MAX_MESSAGE_CHARS} characters.`);
@@ -149,6 +187,8 @@ export async function chat(userId: string, appId: string, input: ChatInput): Pro
   const tier: ModelTier = input.tier === "budget" ? "budget" : "balanced";
 
   // No-AI Query Engine: rule-based, free, no daily cap.
+  if (providerId === "demo" && input.mode)
+    throw new DriverError("ai_key_required", input.mode === "research" ? "Research needs an AI key: it reads the web and cites sources. Pick your AI in the menu, or use ＋ Add key…" : "Agent mode needs an AI key. Pick your AI in the menu, or use ＋ Add key…", 400);
   if (providerId === "demo") {
     const sid = input.sessionId && UUID.test(input.sessionId) ? input.sessionId : crypto.randomUUID();
     const turn = await engineTurn(userId, appId, message, sid, new PgSessionStore(userId, appId, message.slice(0, 60)));
@@ -171,17 +211,52 @@ export async function chat(userId: string, appId: string, input: ChatInput): Pro
     provider = createProvider(id, cfg.providers[id], tier, undefined, { timeoutMs: cfg.limits.providerTimeoutMs, retries: 1 });
   }
   const sessionId = input.sessionId && UUID.test(input.sessionId) ? input.sessionId : crypto.randomUUID();
-  const harness = new RealEstateHarness({
-    sessions: new PgSessionStore(userId, appId, message.slice(0, 60)),
-    prompt: { brokerageName: cfg.brokerageName },
-    maxToolSteps: cfg.limits.maxToolSteps,
-    maxOutputTokens: cfg.limits.maxOutputTokens,
-    maxCostPerTurnUsd: cfg.limits.maxCostPerTurnUsd,
-    historyTurns: cfg.limits.historyTurns,
-    usdToPhp: cfg.usdToPhp,
-  });
+  const mode: Mode = input.mode ?? "agent";
+  const today = manilaToday();
+  const store = new CompactStore(new PgSessionStore(userId, appId, message.slice(0, 60)));
+  const actions: AppAction[] = [];
+  let ledger: SourceLedger | null = null;
+  let harness: RealEstateHarness;
+  if (mode === "research") {
+    const saved = await kvGet(userId, `${appId}#research`, sessionId).catch(() => null);
+    ledger = new SourceLedger(Array.isArray(saved) ? (saved as Source[]) : []);
+    harness = new RealEstateHarness({
+      tools: new ToolRegistry([...researchTools(ledger), ...DEFAULT_TOOLS]),
+      sessions: store,
+      system: researchPrompt({ brokerageName: cfg.brokerageName, today }),
+      maxToolSteps: envNum("RESEARCH_MAX_TOOL_STEPS", 8),
+      maxOutputTokens: envNum("RESEARCH_MAX_OUTPUT_TOKENS", 2500),
+      maxCostPerTurnUsd: envNum("RESEARCH_MAX_COST_PER_TURN_USD", 0.75),
+      deadlineMs: envNum("RESEARCH_DEADLINE_MS", 50_000),
+      historyTurns: cfg.limits.historyTurns,
+      usdToPhp: cfg.usdToPhp,
+    });
+  } else {
+    const extra = bridge ? appTools(bridge, actions) : [];
+    harness = new RealEstateHarness({
+      tools: new ToolRegistry([...DEFAULT_TOOLS, ...extra]),
+      sessions: store,
+      system: agentPrompt({ brokerageName: cfg.brokerageName, today, appTools: extra.map((t) => t.definition.name) }),
+      maxToolSteps: envNum("AGENT_MAX_TOOL_STEPS", Math.max(cfg.limits.maxToolSteps, 8)),
+      maxOutputTokens: cfg.limits.maxOutputTokens,
+      maxCostPerTurnUsd: envNum("AGENT_MAX_COST_PER_TURN_USD", cfg.limits.maxCostPerTurnUsd),
+      deadlineMs: envNum("AGENT_DEADLINE_MS", 50_000),
+      historyTurns: cfg.limits.historyTurns,
+      usdToPhp: cfg.usdToPhp,
+    });
+  }
+  const known = new Set(ledger?.all.map((x) => x.id) ?? []);
   const turn = await harness.chat(provider, message, sessionId);
 
+  let sources: SourceOut[] | undefined;
+  if (ledger) {
+    const check = ledger.check(turn.reply);
+    sources = [...check.cited.map((x) => ({ ...x, cited: true })), ...check.consulted.filter((x) => !known.has(x.id)).map((x) => ({ ...x, cited: false }))];
+    if (check.unknownCitations.length) turn.warnings.push(`The answer cites ${check.unknownCitations.join(", ")}, which the research did not find. Treat those statements as unverified.`);
+    if (check.unverifiedLinks.length) turn.warnings.push(`Links written by the AI that it did not open: ${check.unverifiedLinks.slice(0, 3).join(", ")}. Check them before sharing.`);
+    if (!check.cited.length && turn.reply.length > 300) turn.warnings.push("This answer cites no sources. Ask for sources, or verify it before relying on it.");
+    await kvSet(userId, `${appId}#research`, sessionId, ledger.all.slice(-40).map((x) => ({ ...x, snippet: x.snippet?.slice(0, 200) }))).catch(() => {});
+  }
   const db = await getDb();
   await db.insert(usageEvents).values({
     userId,
@@ -197,7 +272,7 @@ export async function chat(userId: string, appId: string, input: ChatInput): Pro
     costUsd: String(turn.estimatedCostUsd ?? 0),
     costPhp: String(turn.estimatedCostPhp ?? 0),
   });
-  return { ...turn, spentTodayPhp: Math.round((before + (turn.estimatedCostPhp ?? 0)) * 100) / 100, dailyCapPhp: cfg.limits.dailyCapPhp };
+  return { ...turn, mode, sources, actions: actions.length ? actions : undefined, spentTodayPhp: Math.round((before + (turn.estimatedCostPhp ?? 0)) * 100) / 100, dailyCapPhp: cfg.limits.dailyCapPhp };
 }
 
 export async function listSessions(userId: string, appId: string) {
@@ -225,6 +300,7 @@ export async function getSession(userId: string, appId: string, sessionId: strin
 
 export async function deleteSession(userId: string, appId: string, sessionId: string) {
   await new PgSessionStore(userId, appId).clear(sessionId);
+  await kvDel(userId, `${appId}#research`, sessionId).catch(() => {});
   if (UUID.test(sessionId)) await clearEngineState(userId, appId, sessionId);
   return true;
 }

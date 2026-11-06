@@ -6,6 +6,7 @@
  * Created on first use, so builds work without any database.
  */
 import { Pool, neonConfig } from "@neondatabase/serverless";
+import { pgOptions, isPlainPostgres } from "@/lib/db/driver";
 import { drizzle as drizzleNeon, type NeonDatabase } from "drizzle-orm/neon-serverless";
 import * as schema from "./schema";
 
@@ -38,8 +39,13 @@ async function createPglite(): Promise<ListingsDB> {
   return db;
 }
 
-function createNeon(url: string | undefined): ListingsDB {
+async function createNeon(url: string | undefined): Promise<ListingsDB> {
   if (!url) throw new Error("Missing environment variable DATABASE_URL (or LISTINGS_DATABASE_URL)");
+  if (isPlainPostgres(url)) {
+    const { Pool: PgPool } = await import("pg");
+    const { drizzle } = await import("drizzle-orm/node-postgres");
+    return drizzle({ client: new PgPool(pgOptions(url, 10)), schema }) as unknown as ListingsDB;
+  }
   if (typeof WebSocket !== "undefined") neonConfig.webSocketConstructor = WebSocket;
   return drizzleNeon({ client: new Pool({ connectionString: url, max: 5 }), schema });
 }

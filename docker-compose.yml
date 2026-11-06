@@ -1,0 +1,32 @@
+# Self-hosting with Docker Compose: the app plus its own PostgreSQL. For a VPS (DigitalOcean Droplet, Hostinger VPS…).
+#   1. cp .env.example .env.production and fill APP_SECRET, APP_ORIGIN, GRID_ACCESS_PIN (DATABASE_URL is set below)
+#   2. docker compose up -d --build
+#   3. Put Caddy or Nginx in front for HTTPS (see docs/DEPLOYMENT.md)
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: grid
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-please}
+      POSTGRES_DB: grid
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grid"]
+      interval: 5s
+      retries: 10
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      DATABASE_URL: postgres://grid:${POSTGRES_PASSWORD:-change-me-please}@db:5432/grid
+      DB_DRIVER: pg
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  pgdata:

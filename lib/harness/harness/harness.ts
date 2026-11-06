@@ -19,24 +19,32 @@ export interface HarnessOptions {
   maxCostPerTurnUsd?: number;
   historyTurns?: number;
   usdToPhp?: number;
+  /** Replaces the default rulebook (Research and Agent harnesses bring their own). */
+  system?: string;
+  /** Wall-clock budget for the turn; when it runs out the model must answer with what it has. */
+  deadlineMs?: number;
+  /** Called once per tool result (progress, ledgers). */
+  onTool?: (name: string, args: Record<string, unknown>, result: unknown) => void;
 }
 
 export class RealEstateHarness {
   readonly tools: ToolRegistry;
   private readonly sessions: SessionStore;
   private readonly system: string;
-  private readonly opts: Required<Pick<HarnessOptions, "maxToolSteps" | "maxOutputTokens" | "maxCostPerTurnUsd" | "historyTurns" | "usdToPhp">>;
+  private readonly opts: Required<Pick<HarnessOptions, "maxToolSteps" | "maxOutputTokens" | "maxCostPerTurnUsd" | "historyTurns" | "usdToPhp">> & Pick<HarnessOptions, "deadlineMs" | "onTool">;
 
   constructor(options: HarnessOptions = {}) {
     this.tools = options.tools ?? new ToolRegistry();
     this.sessions = options.sessions ?? new InMemorySessionStore();
-    this.system = buildSystemPrompt(options.prompt);
+    this.system = options.system ?? buildSystemPrompt(options.prompt);
     this.opts = {
       maxToolSteps: options.maxToolSteps ?? 8,
       maxOutputTokens: options.maxOutputTokens ?? 1500,
       maxCostPerTurnUsd: options.maxCostPerTurnUsd ?? 0.25,
       historyTurns: options.historyTurns ?? 12,
       usdToPhp: options.usdToPhp ?? 63.5,
+      deadlineMs: options.deadlineMs,
+      onTool: options.onTool,
     };
   }
 
@@ -61,35 +69,66 @@ export class RealEstateHarness {
     let allReported = true;
     const spentUsd = () => (allReported && steps > 0 ? reportedUsd : estimateCostUsd(provider.model, usage));
 
-    while (steps < this.opts.maxToolSteps) {
-      steps++;
-      const res = await provider.complete({ system: this.system, messages, tools: this.tools.definitions(), maxOutputTokens: this.opts.maxOutputTokens });
+    const started = Date.now();
+    const timeLeft = () => (this.opts.deadlineMs ? this.opts.deadlineMs - (Date.now() - started) : Infinity);
+    const account = (res: Awaited<ReturnType<ModelProvider["complete"]>>) => {
       usage.inputTokens += res.usage.inputTokens;
       usage.cachedInputTokens += res.usage.cachedInputTokens;
       usage.outputTokens += res.usage.outputTokens;
       if (res.costUsd === undefined) allReported = false;
       else reportedUsd += res.costUsd;
+    };
+    let unfinished = false;
+
+    while (steps < this.opts.maxToolSteps) {
+      steps++;
+      const res = await provider.complete({ system: this.system, messages, tools: this.tools.definitions(), maxOutputTokens: this.opts.maxOutputTokens });
+      account(res);
       messages.push({ role: "assistant", content: res.text, toolCalls: res.toolCalls.length ? res.toolCalls : undefined });
       reply = res.text;
       if (!res.toolCalls.length) break;
 
-      for (const call of res.toolCalls) {
-        const { result } = await this.tools.execute(call.name, call.arguments);
+      // Independent tool calls of one step run together (web reads take seconds each).
+      const results = await Promise.all(res.toolCalls.map((call) => this.tools.execute(call.name, call.arguments)));
+      res.toolCalls.forEach((call, i) => {
+        const { result } = results[i]!;
         toolTrace.push({ name: call.name, arguments: call.arguments, result });
+        this.opts.onTool?.(call.name, call.arguments, result);
         messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: JSON.stringify(result) });
-      }
+      });
 
       const spent = spentUsd();
       if (spent !== null && spent > this.opts.maxCostPerTurnUsd) {
         warnings.push(`Stopped early: this turn reached the US$${this.opts.maxCostPerTurnUsd} spending cap.`);
-        reply ||= "I stopped before finishing because this request hit the spending cap. Please narrow the question.";
+        unfinished = true;
         break;
       }
       if (steps === this.opts.maxToolSteps) {
         warnings.push("Stopped early: maximum tool steps reached.");
-        reply ||= "I couldn't finish within the step limit. Please try a narrower question.";
+        unfinished = true;
+      } else if (timeLeft() < 12_000) {
+        warnings.push("Answered with the sources found so far (time limit).");
+        unfinished = true;
+        break;
       }
     }
+
+    // Out of steps, time or budget with tool results unread: one last call without tools, so the user
+    // gets an answer from what was found instead of nothing.
+    if (unfinished && messages[messages.length - 1]?.role === "tool" && (this.opts.deadlineMs ? timeLeft() > 4000 : true)) {
+      const res = await provider.complete({
+        system: `${this.system}\n\nYou cannot call tools now. Answer the user's question with what the tools returned so far, cite sources as before, and say briefly what is still unverified.`,
+        messages,
+        tools: this.tools.definitions(),
+        toolChoice: "none",
+        maxOutputTokens: this.opts.maxOutputTokens,
+      });
+      account(res);
+      steps++;
+      reply = res.text;
+      messages.push({ role: "assistant", content: res.text });
+    }
+    if (!reply) reply = unfinished ? "I couldn't finish within the limits for one answer. Please try a narrower question." : reply;
 
     // Close the history on an assistant message so the next turn starts cleanly.
     const last = messages[messages.length - 1];

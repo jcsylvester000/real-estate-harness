@@ -79,7 +79,23 @@ export interface AiKeyForm {
   budgetModel?: string;
   baseUrl?: string;
 }
-export type ChatTurn = HarnessTurnResult & { spentTodayPhp: number; dailyCapPhp: number; /** Query Engine only. */ intent?: string | null; suggestions?: string[] };
+export interface ResearchSource {
+  id: string;
+  url: string;
+  title: string;
+  publisher: string;
+  tier: "official" | "research" | "news" | "portal" | "other";
+  published: string | null;
+  retrievedAt: string;
+  via: "read" | "search" | "brief";
+  cited: boolean;
+}
+export interface AppAction {
+  app: string;
+  label: string;
+  args?: Record<string, unknown>;
+}
+export type ChatTurn = HarnessTurnResult & { spentTodayPhp: number; dailyCapPhp: number; /** Query Engine only. */ intent?: string | null; suggestions?: string[]; mode?: "agent" | "research"; sources?: ResearchSource[]; actions?: AppAction[] };
 
 export interface GridSDK {
   ready: Promise<GridSDK>;
@@ -92,8 +108,8 @@ export interface GridSDK {
   auth: { whoami(): Promise<{ id: string; username: string; displayName: string; role: string; publicId: string }> };
   ai: {
     available: boolean;
-    status(): Promise<{ realAi: boolean; demo: boolean; providers: { id: string; label: string; configured: boolean }[] }>;
-    chat(message: string, opts?: { sessionId?: string; provider?: string; tier?: "balanced" | "budget" }): Promise<ChatTurn>;
+    status(): Promise<{ realAi: boolean; demo: boolean; providers: { id: string; label: string; configured: boolean }[]; researchSearch?: "brave" | "tavily" | "searxng" | "duckduckgo" }>;
+    chat(message: string, opts?: { sessionId?: string; provider?: string; tier?: "balanced" | "budget"; mode?: "agent" | "research" }): Promise<ChatTurn>;
     providers(): Promise<ProviderInfo[]>;
     sessions(): Promise<{ id: string; title: string; updatedAt: string }[]>;
     session(id: string): Promise<{ id: string; messages: { role: "user" | "assistant"; content: string }[] }>;
