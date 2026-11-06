@@ -26,39 +26,39 @@ beforeAll(async () => {
 
 describe("listings database", () => {
   it("imports a GRID export, skips bad rows, and re-imports as updates", async () => {
-    const first = await importGridCsv(db, { fileName: "sample.csv", csv });
+    const first = await importGridCsv({ fileName: "sample.csv", csv });
     expect(first).toMatchObject({ rowsTotal: 9, inserted: 8, updated: 0, skipped: 1 });
     expect(first.problems[0]).toMatchObject({ row: 10, code: "TEST_0009" });
-    const again = await importGridCsv(db, { fileName: "sample.csv", csv });
+    const again = await importGridCsv({ fileName: "sample.csv", csv });
     expect(again).toMatchObject({ inserted: 0, updated: 8 });
   });
 
   it("indexes place, kind and facts from free text", async () => {
-    const r = await searchListings(db, { query: "Avida" });
+    const r = await searchListings({ query: "Avida" });
     expect(r.listings[0]).toMatchObject({ code: "TEST_0003", city: "Taguig", province: "Metro Manila", kind: "condominium-unit", kindInferred: true, bedrooms: 1 });
-    const lot = await searchListings(db, { province: "La Union" });
+    const lot = await searchListings({ province: "La Union" });
     expect(lot.listings[0]).toMatchObject({ code: "TEST_0005", lotAreaSqm: 79 });
   });
 
   it("filters by place alias, kind, transaction and budget; hides inactive listings", async () => {
-    const bgc = await searchListings(db, { city: "BGC", transactionType: "lease", kind: "condominium-unit", maxPrice: 40_000 });
+    const bgc = await searchListings({ city: "BGC", transactionType: "lease", kind: "condominium-unit", maxPrice: 40_000 });
     expect(bgc.listings.map((l) => l.code)).toEqual(["TEST_0002", "TEST_0003"]);
-    const makati = await searchListings(db, { city: "Makati", kind: "condominium-unit" });
+    const makati = await searchListings({ city: "Makati", kind: "condominium-unit" });
     expect(makati.listings.map((l) => l.code)).toEqual(["TEST_0004"]);
   });
 
   it("ranks keyword matches, falls back to partial matches, and corrects place spelling", async () => {
-    expect((await searchListings(db, { query: "commercial lot C6" })).listings[0]?.code).toBe("TEST_0001");
-    const partial = await searchListings(db, { query: "rockwell penthouse" });
+    expect((await searchListings({ query: "commercial lot C6" })).listings[0]?.code).toBe("TEST_0001");
+    const partial = await searchListings({ query: "rockwell penthouse" });
     expect(partial.matchMode).toBe("partial");
     expect(partial.listings[0]?.code).toBe("TEST_0004");
-    const typo = await searchListings(db, { query: "paranake house" });
+    const typo = await searchListings({ query: "paranake house" });
     expect(typo.notes[0]).toMatch(/paranake → paranaque/);
     expect(typo.listings[0]?.code).toBe("TEST_0006");
   });
 
   it("builds facets for the AI index", async () => {
-    const f = await facets(db);
+    const f = await facets();
     expect(f.totalAvailable).toBe(7);
     expect(f.byCity.find((c) => c.city === "Taguig")?.count).toBe(3);
     expect(f.byKind.find((k) => k.value === "warehouse")?.count).toBe(1);
@@ -92,7 +92,7 @@ describe("listings drivers and AI tools", () => {
     const saved = (await callDriver(as(broker, app("listings")), "listings.save", form)) as { code: string; city: string };
     expect(saved).toMatchObject({ city: "Makati" });
     expect(saved.code).toMatch(/^GRID-M-/);
-    expect(((await searchListings(db, { query: "salcedo corner" })).listings[0])?.code).toBe(saved.code);
+    expect(((await searchListings({ query: "salcedo corner" })).listings[0])?.code).toBe(saved.code);
     await expect(callDriver(as(sales, app("listings")), "listings.save", form)).rejects.toMatchObject({ code: "permission_denied" });
     await expect(callDriver(as(sales, app("listings")), "listings.import", { fileName: "x.csv", csv })).rejects.toMatchObject({ code: "permission_denied" });
     await expect(callDriver(as(broker, app("listings")), "listings.import", { fileName: "x.csv", csv: "a,b\n1,2" })).rejects.toMatchObject({ code: "invalid_input" });
@@ -103,8 +103,8 @@ describe("listings drivers and AI tools", () => {
 describe("sorting", () => {
   it("accepts every sort with and without keywords", async () => {
     for (const sort of ["relevance", "price_asc", "price_desc", "newest"] as const) {
-      expect((await searchListings(db, { sort })).total).toBeGreaterThan(0);
-      expect((await searchListings(db, { sort, query: "condo" })).total).toBeGreaterThan(0);
+      expect((await searchListings({ sort })).total).toBeGreaterThan(0);
+      expect((await searchListings({ sort, query: "condo" })).total).toBeGreaterThan(0);
     }
   });
 });

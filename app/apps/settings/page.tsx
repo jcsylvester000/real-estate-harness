@@ -1,75 +1,12 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { AppFrame } from "@/components/apps/app-frame";
 import { php } from "@/components/apps/result-view";
 import { errText } from "@/components/apps/use-grid";
 import { WALLPAPERS } from "@/lib/apps/wallpapers";
-import type { GridSDK, UsageAllRow, UsageMine, UserRow } from "@/lib/sdk/types";
+import type { GridSDK, UsageAllRow, UsageMine } from "@/lib/sdk/types";
 
 const WALL_NAMES: Record<string, string> = { "wall-grid": "GRID blueprint", "wall-dusk": "Manila dusk", "wall-sand": "Sand", "wall-night": "Night" };
-
-function Account({ grid }: { grid: GridSDK }) {
-  const [name, setName] = useState(grid.user?.displayName ?? "");
-  const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  return (
-    <div className="max-w-md space-y-6">
-      <form
-        className="space-y-3"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          try {
-            await grid.account.update({ displayName: name });
-            setMsg({ ok: true, text: "Name saved. It shows after you reload the desktop." });
-          } catch (err) {
-            setMsg({ ok: false, text: errText(err) });
-          }
-        }}
-      >
-        <h2 className="font-sans text-sm font-semibold">Your name</h2>
-        <label htmlFor="dn" className="label">
-          Display name
-        </label>
-        <input id="dn" className="field" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
-        <button type="submit" className="btn btn-dark">
-          Save name
-        </button>
-      </form>
-      <form
-        className="space-y-3"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (pw.next !== pw.confirm) return setMsg({ ok: false, text: "The two new passwords do not match." });
-          try {
-            await grid.account.changePassword({ current: pw.current, next: pw.next });
-            setPw({ current: "", next: "", confirm: "" });
-            setMsg({ ok: true, text: "Password changed. Other devices were signed out." });
-          } catch (err) {
-            setMsg({ ok: false, text: errText(err) });
-          }
-        }}
-      >
-        <h2 className="font-sans text-sm font-semibold">Change password</h2>
-        {(["current", "next", "confirm"] as const).map((k) => (
-          <div key={k}>
-            <label htmlFor={`pw-${k}`} className="label">
-              {{ current: "Current password", next: "New password (15+ characters)", confirm: "Repeat new password" }[k]}
-            </label>
-            <input id={`pw-${k}`} type="password" className="field" autoComplete={k === "current" ? "current-password" : "new-password"} value={pw[k]} onChange={(e) => setPw({ ...pw, [k]: e.target.value })} />
-          </div>
-        ))}
-        <button type="submit" className="btn btn-dark">
-          Change password
-        </button>
-      </form>
-      {msg && (
-        <p role="status" className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-ok-soft text-ok" : "bg-bad-soft text-bad"}`}>
-          {msg.text}
-        </p>
-      )}
-    </div>
-  );
-}
 
 function Appearance({ grid }: { grid: GridSDK }) {
   return (
@@ -168,132 +105,6 @@ function Usage({ grid, all }: { grid: GridSDK; all: boolean }) {
   );
 }
 
-function Users({ grid }: { grid: GridSDK }) {
-  const [rows, setRows] = useState<UserRow[]>([]);
-  const [f, setF] = useState({ username: "", displayName: "", password: "", role: "salesperson" });
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const load = useCallback(() => grid.users.list().then(setRows).catch((e) => setMsg({ ok: false, text: errText(e) })), [grid]);
-  useEffect(() => {
-    load();
-  }, [load]);
-  const update = async (userId: string, patch: Record<string, unknown>) => {
-    try {
-      await grid.users.update({ userId, ...patch });
-      load();
-    } catch (e) {
-      grid.ui.notify(errText(e), { tone: "bad" });
-    }
-  };
-  const reset = async (u: UserRow) => {
-    const temp = await grid.ui.prompt(`Temporary password for ${u.username} (15+ characters). They must change it at next sign-in.`, "");
-    if (!temp) return;
-    try {
-      await grid.users.resetPassword({ userId: u.id, temporaryPassword: temp });
-      grid.ui.notify(`Password reset for ${u.username}. Tell them in person or by phone, not by chat.`, { tone: "ok" });
-    } catch (e) {
-      grid.ui.notify(errText(e), { tone: "bad" });
-    }
-  };
-  return (
-    <div className="space-y-5">
-      <form
-        className="card grid gap-3 p-4 sm:grid-cols-2"
-        aria-label="Add a user"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          try {
-            await grid.users.create(f);
-            setMsg({ ok: true, text: `${f.username} created. They must choose their own password at first sign-in.` });
-            setF({ username: "", displayName: "", password: "", role: "salesperson" });
-            load();
-          } catch (err) {
-            setMsg({ ok: false, text: errText(err) });
-          }
-        }}
-      >
-        <h2 className="font-sans text-sm font-semibold sm:col-span-2">Add a user</h2>
-        <div>
-          <label htmlFor="u-name" className="label">
-            Username
-          </label>
-          <input id="u-name" className="field" required value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} />
-        </div>
-        <div>
-          <label htmlFor="u-dn" className="label">
-            Display name
-          </label>
-          <input id="u-dn" className="field" value={f.displayName} onChange={(e) => setF({ ...f, displayName: e.target.value })} />
-        </div>
-        <div>
-          <label htmlFor="u-pw" className="label">
-            Temporary password (15+ characters)
-          </label>
-          <input id="u-pw" className="field" type="password" autoComplete="new-password" required value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} />
-        </div>
-        <div>
-          <label htmlFor="u-role" className="label">
-            Role
-          </label>
-          <select id="u-role" className="field" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
-            <option value="salesperson">Salesperson</option>
-            <option value="broker">Broker (can edit listings)</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-        <div className="sm:col-span-2">
-          <button type="submit" className="btn btn-dark">
-            Create user
-          </button>
-        </div>
-        {msg && (
-          <p role="status" className={`rounded-lg px-3 py-2 text-sm sm:col-span-2 ${msg.ok ? "bg-ok-soft text-ok" : "bg-bad-soft text-bad"}`}>
-            {msg.text}
-          </p>
-        )}
-      </form>
-      <table className="w-full text-left text-sm">
-        <thead>
-          <tr className="bg-sand">
-            {["User", "Role", "Status", ""].map((h) => (
-              <th key={h} className="px-2 py-1.5 font-medium">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((u) => (
-            <tr key={u.id} className="border-b border-line">
-              <td className="px-2 py-1.5">
-                {u.displayName} <span className="text-xs text-muted">@{u.username} · {u.publicId}</span>
-              </td>
-              <td className="px-2 py-1.5">
-                <label htmlFor={`r-${u.id}`} className="sr-only">
-                  Role for {u.username}
-                </label>
-                <select id={`r-${u.id}`} className="field h-8 py-0 text-xs" value={u.role} onChange={(e) => update(u.id, { role: e.target.value })}>
-                  <option value="salesperson">Salesperson</option>
-                  <option value="broker">Broker</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </td>
-              <td className="px-2 py-1.5 text-xs">{u.disabled ? "Disabled" : u.mustChangePassword ? "Must change password" : "Active"}</td>
-              <td className="px-2 py-1.5 text-right whitespace-nowrap">
-                <button type="button" className="btn btn-ghost min-h-8 px-2 text-xs" onClick={() => reset(u)}>
-                  Reset password
-                </button>{" "}
-                <button type="button" className="btn btn-ghost min-h-8 px-2 text-xs" onClick={() => update(u.id, { disabled: !u.disabled })}>
-                  {u.disabled ? "Enable" : "Disable"}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function AiSetup({ grid }: { grid: GridSDK }) {
   const [st, setSt] = useState<{ realAi: boolean; providers: { id: string; label: string; configured: boolean }[] } | null>(null);
   useEffect(() => {
@@ -303,13 +114,13 @@ function AiSetup({ grid }: { grid: GridSDK }) {
     ["Property Finder", "Plain-language search of the listings index: “2BR condo for rent in BGC under 60k”."],
     ["Listings", "Browse, edit and import GRID listing exports. The search index updates on every change."],
     ["Calculators", "Taxes and fees, loan payments, commission, Maceda refunds, foreign ownership."],
-    ["Deal Desk (smart search mode)", "Answers calculator and listing questions without an AI. Free conversation needs a key."],
+    ["Deal Desk (Query Engine)", "Answers listing, matching, loan, calculator and document questions without an AI, in English, Filipino or Taglish. Free-form writing needs a key."],
     ["Files, Notes, App Center, Settings", "Everything works as normal."],
   ];
   return (
     <div className="max-w-2xl space-y-5">
       <section className={`rounded-xl border p-4 ${st?.realAi ? "border-ok/30 bg-ok-soft" : "border-warn/30 bg-warn-soft"}`}>
-        <h2 className={`font-sans text-sm font-semibold ${st?.realAi ? "text-ok" : "text-warn"}`}>{st ? (st.realAi ? "AI is connected" : "No AI key yet: smart search mode") : "Checking…"}</h2>
+        <h2 className={`font-sans text-sm font-semibold ${st?.realAi ? "text-ok" : "text-warn"}`}>{st ? (st.realAi ? "AI is connected" : "No AI key yet: Query Engine mode") : "Checking…"}</h2>
         <p className="mt-1 text-sm text-ink-2">
           {st?.realAi
             ? "Deal Desk can hold full conversations. It still answers only with GRID's calculators, rulebook and listings index."
@@ -359,21 +170,28 @@ function AiSetup({ grid }: { grid: GridSDK }) {
   );
 }
 
+function Apps({ grid }: { grid: GridSDK }) {
+  return (
+    <div className="max-w-xl space-y-4 text-sm">
+      <h2 className="font-sans text-sm font-semibold">Apps and permissions</h2>
+      <p className="text-muted">See every app, install a third-party app, take back permissions you gave an app, and read the developer SDK guide.</p>
+      <button type="button" className="btn btn-dark" onClick={() => grid.ui.openApp("app-center")}>
+        Open App Center
+      </button>
+    </div>
+  );
+}
+
 function Settings({ grid }: { grid: GridSDK }) {
   const isAdmin = grid.user?.role === "admin";
   const tabs = [
-    ["account", "Account"],
     ["appearance", "Appearance"],
     ["ai", "AI setup"],
-    ["usage", "My AI usage"],
-    ...(isAdmin
-      ? [
-          ["users", "Users"],
-          ["team-usage", "Team AI usage"],
-        ]
-      : []),
+    ["usage", "AI usage"],
+    ...(isAdmin ? [["team-usage", "Team AI usage"]] : []),
+    ["apps", "Apps"],
   ] as [string, string][];
-  const start = typeof grid.launchArgs.tab === "string" && tabs.some(([k]) => k === grid.launchArgs.tab) ? (grid.launchArgs.tab as string) : "account";
+  const start = typeof grid.launchArgs.tab === "string" && tabs.some(([k]) => k === grid.launchArgs.tab) ? (grid.launchArgs.tab as string) : "appearance";
   const [tab, setTab] = useState(start);
   return (
     <div className="app-shell md:flex-row">
@@ -385,11 +203,10 @@ function Settings({ grid }: { grid: GridSDK }) {
         ))}
       </nav>
       <div className="min-h-0 flex-1 overflow-auto p-5">
-        {tab === "account" && <Account grid={grid} />}
         {tab === "appearance" && <Appearance grid={grid} />}
         {tab === "ai" && <AiSetup grid={grid} />}
         {tab === "usage" && <Usage grid={grid} all={false} />}
-        {tab === "users" && <Users grid={grid} />}
+        {tab === "apps" && <Apps grid={grid} />}
         {tab === "team-usage" && <Usage grid={grid} all />}
       </div>
     </div>

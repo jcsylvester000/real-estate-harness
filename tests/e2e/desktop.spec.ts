@@ -1,24 +1,32 @@
 import { expect, test } from "@playwright/test";
 import { openApp, signIn } from "./helpers";
 
-test("redirects to sign-in, then shows the desktop with the built-in apps", async ({ page }) => {
-  await page.goto("/desktop");
-  await expect(page).toHaveURL(/\/login/);
+test("the PIN modal guards the desktop; App Center is not on the desktop", async ({ page }) => {
+  await page.goto("/login");
+  await expect(page).toHaveURL(/\/desktop/);
+  await expect(page.getByRole("dialog", { name: "Grid Agentic" })).toBeVisible();
   await signIn(page);
-  for (const id of ["deal-desk", "property-finder", "calculators", "listings", "files", "notes", "app-center", "settings"]) await expect(page.locator(`[data-desktop-icon="${id}"]`)).toBeVisible();
+  await expect(page.locator('[data-desktop-icon="app-center"]')).toHaveCount(0);
+  for (const id of ["deal-desk", "property-finder", "calculators", "listings", "files", "notes", "settings"]) await expect(page.locator(`[data-desktop-icon="${id}"]`)).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Taskbar" })).toBeVisible();
-  // No AI key in the test server: the taskbar says so, and Deal Desk explains smart search mode.
-  await expect(page.locator('[data-ai-status="off"]')).toContainText("Smart search mode");
+  // No AI key in the test server: the taskbar says so, and Deal Desk explains the Query Engine.
+  await expect(page.locator('[data-ai-status="off"]')).toContainText("Query Engine (no AI)");
 });
 
-test("wrong password is refused with a clear message", async ({ page }) => {
-  await signIn(page, { username: "e2e_admin", password: "this is not the password" }).catch(() => {});
-  await expect(page.getByText("Wrong username or password.")).toBeVisible();
+test("a wrong PIN is refused, counts down, and Lock returns to the PIN modal", async ({ page }) => {
+  await page.goto("/desktop");
+  await page.getByLabel("PIN").fill("1111");
+  await expect(page.getByText("Wrong PIN. 4 tries left.")).toBeVisible();
+  await page.getByLabel("PIN").fill("4120");
+  await page.getByRole("button", { name: "Start" }).click();
+  await page.getByRole("button", { name: "Lock" }).click();
+  await expect(page.getByRole("dialog", { name: "Grid Agentic" })).toBeVisible();
 });
 
 test("calculators run without AI and windows can be moved, minimized and closed", async ({ page }) => {
   await signIn(page);
   const calc = await openApp(page, "calculators", "Calculators");
+  await calc.getByRole("tab", { name: "Taxes & fees" }).click();
   await calc.getByRole("button", { name: "Calculate" }).click();
   await expect(calc.getByText("Buyer cash needed for closing")).toBeVisible();
   await expect(calc.getByText("₱190,000").first()).toBeVisible();
@@ -53,7 +61,7 @@ test("Deal Desk answers with harness calculators in demo mode and saves to Files
 
   await dd.getByLabel("Message").fill("2BR condos in Pasig under ₱8M");
   await dd.getByRole("button", { name: "Send" }).click();
-  await expect(dd.getByText("Calculations used: search_listings")).toBeVisible({ timeout: 15000 });
+  await expect(dd.getByText("Calculations used: listings.search")).toBeVisible({ timeout: 15000 });
   await expect(dd.getByText("DEMO-001").first()).toBeVisible();
 
   // Save answer -> desktop prompt -> file appears in Files.
@@ -84,7 +92,11 @@ test("Notes writes a file that Files can reopen in Notes", async ({ page }) => {
 
 test("a third-party app must be installed by an admin and asks the user for each permission", async ({ page }) => {
   await signIn(page);
-  const ac = await openApp(page, "app-center", "App Center");
+  await page.locator('[data-desktop-icon="settings"]').dblclick();
+  const st = page.locator('[data-window="settings"] iframe').contentFrame();
+  await st.getByRole("button", { name: "Apps" }).click();
+  await st.getByRole("button", { name: "Open App Center" }).click();
+  const ac = page.locator('[data-window="app-center"] iframe').contentFrame();
   await ac.getByRole("button", { name: "Install an app" }).click();
   await ac.getByLabel("App id").fill("loan-widget");
   await ac.getByLabel("Name").fill("Loan Widget");

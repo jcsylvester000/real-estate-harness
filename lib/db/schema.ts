@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
+  customType,
   index,
   integer,
   jsonb,
@@ -52,6 +53,26 @@ export const sessions = pgTable(
     userAgent: text("user_agent"),
   },
   (t) => [index("sessions_user_idx").on(t.userId)],
+);
+
+/** Lender rate overrides edited in the Calculators app. Built-in starting data: lib/lenders/data.ts. */
+export const lenderRates = pgTable("lender_rates", {
+  id: text("id").primaryKey(),
+  data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+  updatedBy: text("updated_by"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** PIN unlock attempts, for the 5-tries lockout. The address is stored only as a keyed hash. */
+export const accessAttempts = pgTable(
+  "access_attempts",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    addressHash: text("address_hash").notNull(),
+    ok: boolean("ok").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("access_attempts_addr_idx").on(t.addressHash, t.createdAt)],
 );
 
 /** Third-party apps installed by an admin. Built-in apps live in code (lib/apps/catalog.ts). */
@@ -163,4 +184,46 @@ export const auditLog = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("audit_time_idx").on(t.createdAt)],
+);
+
+const tsvector = customType<{ data: string }>({ dataType: () => "tsvector" });
+
+/**
+ * Documents uploaded to Deal Desk for the no-AI Query Engine. Text is extracted in the browser (PDF text layer,
+ * DOCX, OCR for images and scans); only the text is stored, never the original file. Summary and facts are
+ * computed once at upload (extractive, no AI).
+ */
+export const documents = pgTable(
+  "documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    mime: text("mime").notNull().default("text/plain"),
+    /** pdf-text | pdf-ocr | docx | image-ocr | text | note */
+    method: text("method").notNull(),
+    pages: integer("pages").notNull().default(1),
+    chars: integer("chars").notNull().default(0),
+    /** Mean OCR confidence 0-100 when OCR was used. */
+    ocrConfidence: integer("ocr_confidence"),
+    summary: text("summary").notNull().default(""),
+    facts: jsonb("facts").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("documents_user_idx").on(t.userId, t.createdAt)],
+);
+
+/** Searchable passages of a document (about 900 characters each, split on paragraphs). */
+export const documentChunks = pgTable(
+  "document_chunks",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull(),
+    seq: integer("seq").notNull(),
+    page: integer("page"),
+    text: text("text").notNull(),
+    search: tsvector("search").generatedAlwaysAs(sql`to_tsvector('simple', text)`),
+  },
+  (t) => [index("doc_chunks_doc_idx").on(t.documentId, t.seq), index("doc_chunks_search_idx").using("gin", t.search), index("doc_chunks_user_idx").on(t.userId)],
 );

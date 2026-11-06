@@ -201,6 +201,49 @@
       },
     },
 
+    /** Documents the Query Engine can read. Extract text in the browser first (PDF, DOCX, OCR); only text is sent. */
+    docs: {
+      list: c("docs.list"),
+      get: function (id, opts) {
+        return request("docs.get", { id: id, withText: !!(opts && opts.withText) });
+      },
+      search: function (q, opts) {
+        return request("docs.search", { q: q, limit: opts && opts.limit });
+      },
+      add: c("docs.add"),
+      delete: function (id) {
+        return request("docs.delete", { id: id });
+      },
+    },
+
+    /** Home-loan lenders (Pag-IBIG, banks, in-house): rates, comparison, rate edits. */
+    lenders: {
+      list: c("lenders.list"),
+      compare: c("lenders.compare"),
+      save: c("lenders.save"),
+      reset: function (id) {
+        return request("lenders.reset", { id: id });
+      },
+    },
+    /** Buyer–Seller Matching: live scoring, saved buyers, two-way matches. */
+    match: {
+      run: function (criteria, opts) {
+        var o = opts || {};
+        return request("match.run", { criteria: criteria, limit: o.limit, offset: o.offset });
+      },
+      buyers: c("match.buyers"),
+      saveBuyer: c("match.saveBuyer"),
+      deleteBuyer: function (id) {
+        return request("match.deleteBuyer", { id: id });
+      },
+      buyerMatches: function (id, opts) {
+        var o = opts || {};
+        return request("match.buyerMatches", { id: id, limit: o.limit, offset: o.offset });
+      },
+      listingBuyers: function (code) {
+        return request("match.listingBuyers", { code: code });
+      },
+    },
     usage: { mine: c("usage.mine"), all: c("usage.all") },
     apps: {
       list: c("apps.list"),

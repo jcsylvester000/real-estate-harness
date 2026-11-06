@@ -8,6 +8,13 @@
       "when": 1793945159739,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793949414109,
+      "tag": "0001_cqrs_read_models",
+      "breakpoints": true
     }
   ]
 }

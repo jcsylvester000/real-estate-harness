@@ -4,9 +4,8 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 
 async function main() {
-  const { getListingsDb } = await import("../lib/listings/db");
   const { seedDemoListings } = await import("../lib/listings/import");
-  const n = await seedDemoListings(await getListingsDb());
+  const n = await seedDemoListings();
   console.log(`db:seed done: ${n} demo listings checked (existing codes are left as they are).`);
   process.exit(0);
 }

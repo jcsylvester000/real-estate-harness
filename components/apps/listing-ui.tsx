@@ -3,6 +3,9 @@
 import { BedDouble, Calculator, Copy, Landmark, MapPin, Ruler, Sparkles, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { GridSDK, ListingCard, ListingDetail } from "@/lib/sdk/types";
+import { FEATURES, PURPOSES, TIER_LABEL, type LocationTier } from "@/lib/listings/analyze";
+import type { MatchPart } from "@/lib/sdk/types";
+import { ScoreBadge } from "./match-ui";
 import { php } from "./result-view";
 import { errText } from "./use-grid";
 
@@ -65,6 +68,18 @@ export function ListingCardView({ l, onOpen, starred, onStar }: { l: ListingCard
 export function ListingDrawer({ grid, code, onClose, extraActions }: { grid: GridSDK; code: string; onClose: () => void; extraActions?: (l: ListingDetail) => React.ReactNode }) {
   const [l, setL] = useState<ListingDetail | null>(null);
   const [error, setError] = useState("");
+  const [buyers, setBuyers] = useState<{ id: string; label: string; description: string; score: number; parts: MatchPart[] }[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    // Two-way matching: saved buyers this listing suits (apps without the "buyers" permission just skip this).
+    grid.match
+      .listingBuyers(code)
+      .then((b) => live && setBuyers(b))
+      .catch(() => live && setBuyers(null));
+    return () => {
+      live = false;
+    };
+  }, [grid, code]);
   useEffect(() => {
     let live = true;
     grid.listings
@@ -128,6 +143,62 @@ export function ListingDrawer({ grid, code, onClose, extraActions }: { grid: Gri
                 ))}
               </dl>
               {l.notes && <p className="mt-3 text-sm whitespace-pre-wrap">{l.notes}</p>}
+              {l.analysis && (
+                <section aria-label="Listing analysis" className="mt-4 rounded-lg border border-line bg-white p-3 text-sm" data-testid="analysis">
+                  <h3 className="font-sans text-xs font-semibold tracking-wider text-muted uppercase">What matching sees</h3>
+                  <p className="mt-1">{l.analysis.summary}</p>
+                  <p className="mt-1 text-xs text-muted">
+                    {TIER_LABEL[l.analysis.locationTier as LocationTier] ?? l.analysis.locationTier}
+                    {l.analysis.region ? ` · ${l.analysis.region}` : ""}
+                    {l.analysis.pricePerSqm ? ` · ${php(l.analysis.pricePerSqm)}/sqm${l.transactionType === "lease" ? "/mo" : ""}` : ""}
+                  </p>
+                  {l.analysis.features.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {l.analysis.features.map((f) => (
+                        <Chip key={f}>{FEATURES[f]?.label ?? f}</Chip>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs">
+                    Best for:{" "}
+                    {Object.entries(l.analysis.purposes)
+                      .filter(([, v]) => v >= 0.6)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([k]) => PURPOSES[k as keyof typeof PURPOSES])
+                      .join(", ") || "no clear purpose"}
+                  </p>
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span>Data completeness</span>
+                      <span className="tabular-nums">{Math.round(l.analysis.quality * 100)}%</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded bg-sand" aria-hidden>
+                      <div className={`h-full ${l.analysis.quality >= 0.8 ? "bg-ok" : l.analysis.quality >= 0.5 ? "bg-warn" : "bg-bad"}`} style={{ width: `${l.analysis.quality * 100}%` }} />
+                    </div>
+                    {l.analysis.missing.length > 0 && <p className="mt-1 text-[11px] text-muted">Add {l.analysis.missing.join(", ")} for more reliable matches.</p>}
+                  </div>
+                </section>
+              )}
+              {buyers && (
+                <section aria-label="Matching buyers" className="mt-4 rounded-lg border border-line bg-white p-3 text-sm" data-testid="matching-buyers">
+                  <h3 className="font-sans text-xs font-semibold tracking-wider text-muted uppercase">Matching saved buyers</h3>
+                  {buyers.length === 0 ? (
+                    <p className="mt-1 text-xs text-muted">No saved buyer matches this listing yet.</p>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {buyers.map((b) => (
+                        <li key={b.id} className="flex items-center gap-2">
+                          <ScoreBadge score={b.score} size="sm" />
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">{b.label}</span>
+                            <span className="block truncate text-[11px] text-muted">{b.description}</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
               <h3 className="mt-5 mb-2 font-sans text-xs font-semibold tracking-wider text-muted uppercase">Next steps</h3>
               <div className="grid gap-2">
                 {l.transactionType === "sale" && (

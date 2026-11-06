@@ -15,6 +15,27 @@
       "when": 1793945414213,
       "tag": "0001_drop_legacy_listings",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793948751614,
+      "tag": "0002_pin_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793949896409,
+      "tag": "0003_lender_rates",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793950311183,
+      "tag": "0004_documents",
+      "breakpoints": true
     }
   ]
 }

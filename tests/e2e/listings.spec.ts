@@ -49,12 +49,12 @@ test("Property Finder answers a plain-language inquiry from the index with no AI
   await expect(calc.getByLabel(/Selling Price/)).toHaveValue("45000000");
 });
 
-test("Deal Desk in smart search mode searches the same index", async ({ page }) => {
+test("Deal Desk Query Engine searches the same index", async ({ page }) => {
   await signIn(page);
   const dd = await openApp(page, "deal-desk", "Deal Desk AI");
   await dd.getByLabel("Message").fill("warehouse for lease");
   await dd.getByRole("button", { name: "Send" }).click();
-  await expect(dd.getByText("Calculations used: search_listings")).toBeVisible({ timeout: 15000 });
+  await expect(dd.getByText("Calculations used: listings.search")).toBeVisible({ timeout: 15000 });
   await expect(dd.getByText("TEST_0007").first()).toBeVisible();
   await dd.getByLabel("Message").fill("How many listings do we have?");
   await dd.getByRole("button", { name: "Send" }).click();
@@ -65,6 +65,6 @@ test("Settings explains what works without AI", async ({ page }) => {
   await signIn(page);
   await page.locator('[data-ai-status="off"]').click();
   const st = page.locator('[data-window="settings"] iframe').contentFrame();
-  await expect(st.getByText("No AI key yet: smart search mode")).toBeVisible();
+  await expect(st.getByText("No AI key yet: Query Engine mode")).toBeVisible();
   await expect(st.getByText("What works without AI")).toBeVisible();
 });

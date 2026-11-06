@@ -6,11 +6,11 @@
  * the server as that app. Third-party apps must be granted each permission by the user, once.
  */
 import Image from "next/image";
-import { LogOut, Search } from "lucide-react";
+import { Lock, Search } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AppInfo } from "@/lib/apps/catalog";
 import { METHOD_PERMISSION, type Permission } from "@/lib/apps/permissions";
-import { logoutAction } from "@/app/(auth)/actions";
+import { lockAction } from "@/app/(auth)/actions";
 import { CallError, driverCall } from "./api";
 import { DialogHost, Toasts, type DialogSpec, type OpenDialog, type Toast } from "./dialogs";
 import { AppIcon, AppTile } from "./icons";
@@ -21,7 +21,6 @@ const PROTOCOL = 1;
 const DESKTOP_MENU: { label: string; appId: string; args?: Record<string, unknown> }[] = [
   { label: "Open Files", appId: "files" },
   { label: "Change wallpaper", appId: "settings", args: { tab: "appearance" } },
-  { label: "App Center", appId: "app-center" },
 ];
 
 interface DesktopUser {
@@ -432,12 +431,12 @@ export function Desktop({ user, initialApps, initialWallpaper, ai }: { user: Des
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{user.displayName}</p>
               <p className="text-xs text-muted capitalize">
-                {user.role} · {user.publicId}
+                Unlocked with the team PIN
               </p>
             </div>
-            <form action={logoutAction}>
+            <form action={lockAction}>
               <button type="submit" className="btn btn-ghost min-h-9 px-3">
-                <LogOut size={15} aria-hidden /> Sign out
+                <Lock size={15} aria-hidden /> Lock
               </button>
             </form>
           </div>
@@ -487,8 +486,8 @@ export function Desktop({ user, initialApps, initialWallpaper, ai }: { user: Des
           className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-white/15 px-2.5 text-[11px] hover:bg-white/10"
         >
           <span className={`size-2 rounded-full ${ai.realAi ? "bg-[#4ade80]" : "bg-gold"}`} aria-hidden />
-          <span className="hidden md:inline">{ai.realAi ? `AI: ${ai.providers[0]}` : "Smart search mode"}</span>
-          <span className="sr-only md:hidden">{ai.realAi ? "AI connected" : "No AI key: smart search mode"}</span>
+          <span className="hidden md:inline">{ai.realAi ? `AI: ${ai.providers[0]}` : "Query Engine (no AI)"}</span>
+          <span className="sr-only md:hidden">{ai.realAi ? "AI connected" : "No AI key: Query Engine mode"}</span>
         </button>
         <time className="hidden px-2 text-right text-xs text-mist sm:block" aria-label="Manila time">
           {clock}

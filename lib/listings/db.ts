@@ -13,6 +13,7 @@ export type ListingsDB = NeonDatabase<typeof schema>;
 
 declare global {
   var __gaListingsDb: Promise<ListingsDB> | undefined;
+  var __gaListingsReadDb: Promise<ListingsDB> | undefined;
   var __gaListingsDbOverride: ListingsDB | undefined;
 }
 
@@ -29,26 +30,37 @@ async function createPglite(): Promise<ListingsDB> {
   const db = drizzle({ client, schema }) as unknown as ListingsDB;
   await migrate(db as never, { migrationsFolder: `${process.cwd()}/${LISTINGS_MIGRATIONS}`, migrationsSchema: "listings_index" });
   if (process.env.PGLITE_SEED_DEMO === "true") {
+    // Seed through the write model, then build the read models (commands need this instance to exist).
+    globalThis.__gaListingsDb = Promise.resolve(db);
     const { seedDemoListings } = await import("./import");
-    await seedDemoListings(db);
+    await seedDemoListings();
   }
   return db;
 }
 
-function createNeon(): ListingsDB {
-  const url = process.env.LISTINGS_DATABASE_URL || process.env.DATABASE_URL;
+function createNeon(url: string | undefined): ListingsDB {
   if (!url) throw new Error("Missing environment variable DATABASE_URL (or LISTINGS_DATABASE_URL)");
   if (typeof WebSocket !== "undefined") neonConfig.webSocketConstructor = WebSocket;
   return drizzleNeon({ client: new Pool({ connectionString: url, max: 5 }), schema });
 }
 
-export async function getListingsDb(): Promise<ListingsDB> {
+const writeUrl = () => process.env.LISTINGS_DATABASE_URL || process.env.DATABASE_URL;
+/** Read replica for queries (CQRS read side). Falls back to the write database. */
+const readUrl = () => process.env.LISTINGS_DATABASE_READ_URL || process.env.DATABASE_READ_URL || writeUrl();
+
+/** "write" for commands and projections, "read" for queries. Same database unless a read URL is set. */
+export async function getListingsDb(mode: "read" | "write" = "write"): Promise<ListingsDB> {
   if (globalThis.__gaListingsDbOverride) return globalThis.__gaListingsDbOverride;
   if (!globalThis.__gaListingsDb) {
-    globalThis.__gaListingsDb = process.env.DB_DRIVER === "pglite" ? createPglite() : Promise.resolve().then(createNeon);
+    globalThis.__gaListingsDb = process.env.DB_DRIVER === "pglite" ? createPglite() : Promise.resolve().then(() => createNeon(writeUrl()));
     globalThis.__gaListingsDb.catch(() => (globalThis.__gaListingsDb = undefined));
   }
-  return globalThis.__gaListingsDb;
+  if (mode === "write" || process.env.DB_DRIVER === "pglite" || readUrl() === writeUrl()) return globalThis.__gaListingsDb;
+  if (!globalThis.__gaListingsReadDb) {
+    globalThis.__gaListingsReadDb = Promise.resolve().then(() => createNeon(readUrl()));
+    globalThis.__gaListingsReadDb.catch(() => (globalThis.__gaListingsReadDb = undefined));
+  }
+  return globalThis.__gaListingsReadDb;
 }
 
 export function setListingsDbOverride(db: ListingsDB | undefined) {

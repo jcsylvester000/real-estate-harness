@@ -4,13 +4,16 @@ import { WALLPAPERS } from "@/lib/apps/wallpapers";
 import { aiStatus } from "@/lib/server/services/ai";
 import { listApps } from "@/lib/server/services/apps";
 import { kvGet } from "@/lib/server/services/kv";
-import { requireUser } from "@/lib/server/session";
+import { PinGate } from "@/components/desktop/pin-gate";
+import { getCurrentSession } from "@/lib/server/session";
 
 export const metadata: Metadata = { title: "Desktop" };
 export const dynamic = "force-dynamic";
 
 export default async function DesktopPage() {
-  const { user } = await requireUser();
+  const session = await getCurrentSession();
+  if (!session) return <PinGate />;
+  const { user } = session;
   const [apps, wallpaper] = await Promise.all([listApps(user.role), kvGet(user.id, "desktop", "wallpaper")]);
   return (
     <Desktop

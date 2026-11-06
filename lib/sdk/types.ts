@@ -4,6 +4,11 @@ import type { ToolDefinition, HarnessTurnResult } from "@/lib/harness/harness/ty
 import type { IndexFacets, ListingCard, SearchInput, SearchResult } from "@/lib/listings/search";
 import type { ImportSummary } from "@/lib/listings/import";
 import type { ParsedInquiry } from "@/lib/listings/inquiry";
+import type { Lender } from "@/lib/lenders/data";
+import type { DocInput, DocSummary, Passage } from "@/lib/server/services/documents";
+import type { LenderQuote, MortgageInput } from "@/lib/lenders/mortgage";
+import type { BuyerCriteria, MatchPart, MatchScore } from "@/lib/listings/match";
+import type { BuyerSummary, MatchedListing, MatchResult } from "@/lib/listings/buyers";
 
 export interface FsEntry {
   path: string;
@@ -13,8 +18,9 @@ export interface FsEntry {
   size: number;
   updatedAt: string;
 }
-export type { ListingCard, SearchInput, SearchResult, IndexFacets, ImportSummary, ParsedInquiry };
-export type ListingDetail = ListingCard & { notes: string; bathrooms: number | null; foreignEligible: boolean | null; titleType: string; propertySubType: string; exclusive: boolean; publishedAt: string | null; listedByEmail?: string };
+export type { Lender, LenderQuote, MortgageInput, DocInput, DocSummary, Passage };
+export type { ListingCard, SearchInput, SearchResult, IndexFacets, ImportSummary, ParsedInquiry, BuyerCriteria, MatchPart, MatchScore, BuyerSummary, MatchedListing, MatchResult };
+export type ListingDetail = ListingCard & { notes: string; bathrooms: number | null; foreignEligible: boolean | null; titleType: string; propertySubType: string; exclusive: boolean; publishedAt: string | null; listedByEmail?: string; analysis: { region: string | null; locationTier: string; areaSqm: number | null; pricePerSqm: number | null; features: string[]; purposes: Record<string, number>; quality: number; missing: string[]; summary: string } };
 export interface ImportBatch { id: number; fileName: string; rowsTotal: number; inserted: number; updated: number; skipped: number; createdAt: string; problems: { row: number; code: string; reason: string }[] }
 export interface ProviderInfo {
   id: string;
@@ -23,7 +29,7 @@ export interface ProviderInfo {
   models: { balanced: string; budget: string };
   isDefault: boolean;
 }
-export type ChatTurn = HarnessTurnResult & { spentTodayPhp: number; dailyCapPhp: number };
+export type ChatTurn = HarnessTurnResult & { spentTodayPhp: number; dailyCapPhp: number; /** Query Engine only. */ intent?: string | null; suggestions?: string[] };
 
 export interface GridSDK {
   ready: Promise<GridSDK>;
@@ -64,6 +70,27 @@ export interface GridSDK {
     delete(path: string): Promise<{ deleted: number }>;
   };
   kv: { get<T = unknown>(key: string): Promise<T | null>; set(key: string, value: unknown): Promise<boolean>; del(key: string): Promise<boolean>; list(prefix?: string): Promise<string[]> };
+  docs: {
+    list(): Promise<DocSummary[]>;
+    get(id: string, opts?: { withText?: boolean }): Promise<DocSummary & { text?: string }>;
+    search(q: string, opts?: { limit?: number }): Promise<Passage[]>;
+    add(input: DocInput): Promise<DocSummary>;
+    delete(id: string): Promise<boolean>;
+  };
+  lenders: {
+    list(): Promise<(Lender & { edited: boolean })[]>;
+    compare(input: MortgageInput & { lenderIds?: string[] }): Promise<{ quotes: LenderQuote[]; best: { lender: string; monthlyPayment: number | null; ratePct: number | null; rateLabel: string } | null; disclaimer: string }>;
+    save(l: Omit<Lender, "basis" | "verify" | "promo" | "ltvTiers">): Promise<Lender>;
+    reset(id: string): Promise<boolean>;
+  };
+  match: {
+    run(criteria: BuyerCriteria, opts?: { limit?: number; offset?: number }): Promise<MatchResult>;
+    buyers(): Promise<BuyerSummary[]>;
+    saveBuyer(input: { id?: string; label: string; notes?: string; criteria: BuyerCriteria }): Promise<string>;
+    deleteBuyer(id: string): Promise<boolean>;
+    buyerMatches(id: string, opts?: { limit?: number; offset?: number }): Promise<{ profile: { id: string; label: string; notes: string; criteria: BuyerCriteria; description: string }; total: number; results: MatchedListing[] }>;
+    listingBuyers(code: string): Promise<{ id: string; label: string; description: string; score: number; rating: number; parts: MatchPart[] }[]>;
+  };
   usage: { mine(): Promise<UsageMine>; all(): Promise<UsageAllRow[]> };
   apps: {
     list(): Promise<AppInfo[]>;

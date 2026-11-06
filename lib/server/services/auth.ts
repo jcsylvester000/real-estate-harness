@@ -129,15 +129,22 @@ export async function login(username: string, password: string, userAgent?: stri
   }
   if (u.disabled) return { ok: false, reason: "This account is disabled. Ask a GRID admin." };
   await db.update(users).set({ failedLogins: 0, lockedUntil: null }).where(eq(users.id, u.id));
+  const token = await createSession(u.id, userAgent);
+  await audit(u.id, "auth.login", {}, db);
+  return { ok: true, token, user: toPublic(u) };
+}
+
+/** Starts a session for a user who was already verified (password or PIN). Returns the cookie token. */
+export async function createSession(userId: string, userAgent?: string) {
+  const db = await getDb();
   const token = randomToken();
   await db.insert(sessions).values({
     id: sha256(token),
-    userId: u.id,
+    userId,
     expiresAt: new Date(Date.now() + LIMITS.sessionAbsoluteMs),
     userAgent: userAgent?.slice(0, 200),
   });
-  await audit(u.id, "auth.login", {}, db);
-  return { ok: true, token, user: toPublic(u) };
+  return token;
 }
 
 /** Loads the session behind a cookie token, enforcing idle and absolute timeouts. */

@@ -63,7 +63,7 @@ const toEntry = (r: typeof files.$inferSelect): FsEntry => ({
 
 /** Creates the default folders for a user the first time their root is listed. */
 async function ensureDefaults(userId: string) {
-  const db = await getDb();
+  const db = await getDb("write");
   await db
     .insert(files)
     .values(DEFAULT_FOLDERS.map((p) => ({ userId, path: p, parentPath: "/", name: nameOf(p), isDir: true, mime: "inode/directory" })))

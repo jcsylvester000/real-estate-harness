@@ -9,6 +9,7 @@ import { z } from "zod";
 import { DESKTOP_APP_ID, type AppInfo } from "@/lib/apps/catalog";
 import { GRANTABLE, METHOD_PERMISSION, type Permission, type Role } from "@/lib/apps/permissions";
 import { ToolRegistry } from "@/lib/harness";
+import { runAs } from "@/lib/db/client";
 import { denied, DriverError, invalid } from "./errors";
 import * as ai from "./services/ai";
 import * as appsSvc from "./services/apps";
@@ -17,8 +18,12 @@ import * as fs from "./services/fs";
 import * as kvSvc from "./services/kv";
 import * as usage from "./services/usage";
 import * as listingsSvc from "./services/listings";
+import * as lendersSvc from "./services/lenders";
+import * as docsSvc from "./services/documents";
 import { listingForm } from "@/lib/listings/manage";
 import { searchInput } from "@/lib/listings/search";
+import { buyerInput } from "@/lib/listings/buyers";
+import { buyerCriteria } from "@/lib/listings/match";
 
 export interface Actor {
   user: auth.PublicUser;
@@ -27,6 +32,8 @@ export interface Actor {
 }
 
 interface Method<S extends z.ZodType> {
+  /** CQRS: commands change state (write database); queries only read (read replica). Default from the name. */
+  kind?: "command" | "query";
   schema: S;
   roles?: Role[];
   /** Only the desktop itself (not apps) may call this. */
@@ -68,6 +75,32 @@ export const METHODS = {
     },
   }),
 
+  // Documents for the Query Engine: text is extracted in the browser; only text reaches the server.
+  "docs.list": m({ schema: none, run: (a) => docsSvc.listDocuments(a.user.id) }),
+  "docs.get": m({ schema: z.object({ id: z.string().uuid(), withText: z.boolean().optional() }), run: (a, x) => docsSvc.getDocument(a.user.id, x.id, x.withText) }),
+  "docs.search": m({ schema: z.object({ q: z.string().min(1).max(300), limit: z.number().int().min(1).max(20).optional() }), run: (a, x) => docsSvc.searchDocuments(a.user.id, x.q, { limit: x.limit }) }),
+  "docs.add": m({ kind: "command", schema: docsSvc.docInput, run: (a, x) => docsSvc.addDocument(a.user.id, x) }),
+  "docs.delete": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => docsSvc.deleteDocument(a.user.id, x.id) }),
+  "lenders.list": m({ schema: none, run: () => lendersSvc.listLenders() }),
+  "lenders.compare": m({
+    schema: z.object({
+      propertyPrice: z.number().positive().max(1e12),
+      downPaymentPercent: z.number().min(0).max(100).optional(),
+      downPaymentAmount: z.number().min(0).optional(),
+      termYears: z.number().int().min(1).max(35),
+      fixYears: z.number().int().min(1).max(30).optional(),
+      monthlyGrossIncome: z.number().min(0).optional(),
+      borrowerAge: z.number().int().min(18).max(80).optional(),
+      quotedRatePct: z.number().min(0).max(40).optional(),
+      usePromo: z.boolean().optional(),
+      maxDtiPct: z.number().min(10).max(80).optional(),
+      lenderIds: z.array(z.string().max(40)).max(30).optional(),
+    }),
+    run: (_a, x) => lendersSvc.compare(x),
+  }),
+  "lenders.save": m({ kind: "command", schema: lendersSvc.lenderInput, roles: ["admin", "broker"], run: (a, x) => lendersSvc.saveLender(x, a.user.id) }),
+  "lenders.reset": m({ kind: "command", schema: z.object({ id: z.string().max(40) }), roles: ["admin", "broker"], run: (a, x) => lendersSvc.resetLender(x.id, a.user.id) }),
+
   "listings.search": m({ schema: searchInput, run: (_a, x) => listingsSvc.search(x) }),
   "listings.ask": m({
     schema: z.object({ text: z.string().trim().min(1).max(300), limit: z.number().int().min(1).max(50).optional(), offset: z.number().int().min(0).max(50_000).optional(), sort: z.enum(["relevance", "price_asc", "price_desc", "newest"]).optional() }),
@@ -78,9 +111,23 @@ export const METHODS = {
     schema: z.object({ code: z.string().max(60) }),
     run: (a, x) => listingsSvc.get(x.code, { withContact: a.app.kind === "builtin" && (a.user.role === "admin" || a.user.role === "broker") }),
   }),
-  "listings.save": m({ schema: listingForm, roles: ["admin", "broker"], run: (a, x) => listingsSvc.save(x, a.user) }),
-  "listings.delete": m({ schema: z.object({ code: z.string().max(60) }), roles: ["admin", "broker"], run: (_a, x) => listingsSvc.remove(x.code) }),
+  "listings.save": m({ kind: "command", schema: listingForm, roles: ["admin", "broker"], run: (a, x) => listingsSvc.save(x, a.user) }),
+  "listings.delete": m({ kind: "command", schema: z.object({ code: z.string().max(60) }), roles: ["admin", "broker"], run: (a, x) => listingsSvc.remove(x.code, a.user.id) }),
+
+  "match.run": m({
+    schema: z.object({ criteria: buyerCriteria, limit: z.number().int().min(1).max(100).optional(), offset: z.number().int().min(0).max(50_000).optional() }),
+    run: (_a, x) => listingsSvc.match(x.criteria, { limit: x.limit, offset: x.offset }),
+  }),
+  "match.buyers": m({ schema: none, run: () => listingsSvc.buyers() }),
+  "match.saveBuyer": m({ kind: "command", schema: buyerInput, run: (a, x) => listingsSvc.saveBuyerProfile(x, a.user.id) }),
+  "match.deleteBuyer": m({ kind: "command", schema: z.object({ id: z.string().uuid() }), run: (a, x) => listingsSvc.deleteBuyerProfile(x.id, a.user.id) }),
+  "match.buyerMatches": m({
+    schema: z.object({ id: z.string().uuid(), limit: z.number().int().min(1).max(100).optional(), offset: z.number().int().min(0).max(50_000).optional() }),
+    run: (_a, x) => listingsSvc.buyerMatches(x.id, { limit: x.limit, offset: x.offset }),
+  }),
+  "match.listingBuyers": m({ schema: z.object({ code: z.string().max(60) }), run: (_a, x) => listingsSvc.listingBuyers(x.code) }),
   "listings.import": m({
+    kind: "command",
     schema: z.object({ fileName: z.string().max(200), csv: z.string().max(8 * 1024 * 1024) }),
     roles: ["admin", "broker"],
     run: (a, x) => listingsSvc.importCsv(x, a.user.id),
@@ -151,6 +198,13 @@ export const METHODS = {
 
 export type MethodName = keyof typeof METHODS;
 
+const COMMAND_VERBS = /\.(set|del|save\w*|delete\w*|write|mkdir|rename|install|uninstall|grant|revoke|create|update|reset\w*|change\w*|chat|import|add\w*|upload\w*|setRate\w*)$/;
+/** command or query, for the CQRS split (exported for tests and the route's x-grid-cqrs header). */
+export function methodKind(method: string): "command" | "query" {
+  const def = (METHODS as Record<string, Method<z.ZodType>>)[method];
+  return def?.kind ?? (COMMAND_VERBS.test(method) ? "command" : "query");
+}
+
 /**
  * The driver gate. Order: known method → permission for this app → role → argument schema → service.
  * Built-in apps hold the permissions they declare; third-party apps also need the user's grant.
@@ -171,5 +225,6 @@ export async function callDriver(actor: Actor, method: string, params: unknown) 
   if (def.roles && !def.roles.includes(actor.user.role)) throw denied("Your role cannot do that.");
   const parsed = def.schema.safeParse(params ?? {});
   if (!parsed.success) throw invalid(parsed.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
-  return def.run(actor, parsed.data);
+  // Queries run in read mode: every getDb() inside goes to the read replica (when configured).
+  return runAs(methodKind(method) === "query" ? "read" : "write", async () => def.run(actor, parsed.data));
 }

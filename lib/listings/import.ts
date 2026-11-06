@@ -1,15 +1,15 @@
 /**
- * Imports listings into the listings database: GRID "listings-published" CSV exports, the harness demo set,
- * and single listings saved in the app. Every write fills the normalized columns that Postgres indexes.
+ * WRITE SIDE (commands): imports listings into the write model — GRID "listings-published" CSV exports and the
+ * harness demo set. Each import appends a ListingsImported event; the projector builds the read models.
  */
 import { desc, sql } from "drizzle-orm";
 import demo from "@/lib/harness/sample-listings.json";
 import type { ListingsDB } from "./db";
-import { kindFromText, kindWords, KINDS, PROPERTY_TYPES, TRANSACTION_TYPES } from "./kinds";
-import { normalizeText, parseAreaSqm, parseBedrooms } from "./normalize";
+import { kindFromText, KINDS, PROPERTY_TYPES, TRANSACTION_TYPES } from "./kinds";
+import { parseAreaSqm, parseBedrooms } from "./normalize";
 import { resolvePlace } from "./places";
 import { importBatches, listings } from "./schema";
-import { clearFacetCache } from "./search";
+import { command, query } from "./cqrs";
 
 export type ListingValues = typeof listings.$inferInsert;
 export type ImportProblem = { row: number; code: string; reason: string };
@@ -56,14 +56,12 @@ const date = (v: string | undefined) => {
 };
 const clean = (v: string | undefined, max = 500) => (v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 
-/** Adds kind, place and the normalized search columns to a listing. */
-export function withIndexFields(v: Omit<ListingValues, "kind" | "kindInferred" | "city" | "province" | "nameNorm" | "placeNorm" | "kindNorm" | "notesNorm" | "searchText"> & Partial<ListingValues>): ListingValues {
+/** Write-side enrichment: kind (stated or guessed), city and province, bedrooms from the name. */
+export function withIndexFields(v: Omit<ListingValues, "kind" | "kindInferred" | "city" | "province"> & Partial<ListingValues>): ListingValues {
   const sub = v.propertySubType ?? "";
   const inferred = sub ? null : kindFromText(`${v.name} ${v.notes ?? ""}`, v.propertyType);
   const kind = sub || inferred || "";
   const place = v.city || v.province ? { city: v.city ?? null, province: v.province ?? null } : resolvePlace(`${v.location ?? ""} ${v.name}`);
-  const nameNorm = normalizeText(v.name);
-  const placeNorm = normalizeText([v.location, place.city, place.province].filter(Boolean).join(" "));
   return {
     ...v,
     propertySubType: sub,
@@ -72,11 +70,6 @@ export function withIndexFields(v: Omit<ListingValues, "kind" | "kindInferred" |
     city: place.city,
     province: place.province,
     bedrooms: v.bedrooms ?? parseBedrooms(v.name),
-    nameNorm,
-    placeNorm,
-    kindNorm: normalizeText(kindWords(kind, v.propertyType, v.transactionType)),
-    notesNorm: normalizeText(v.notes ?? "").slice(0, 4000),
-    searchText: `${nameNorm} ${placeNorm}`.slice(0, 1000),
   };
 }
 
@@ -145,15 +138,11 @@ const UPSERT_SET = {
   sourcePublishedAt: sql`excluded.source_published_at`,
   sourceUpdatedAt: sql`excluded.source_updated_at`,
   importBatchId: sql`excluded.import_batch_id`,
-  nameNorm: sql`excluded.name_norm`,
-  placeNorm: sql`excluded.place_norm`,
-  kindNorm: sql`excluded.kind_norm`,
-  searchText: sql`excluded.search_text`,
   updatedAt: sql`now()`,
 };
 
-/** Inserts or updates in chunks; returns how many rows were new. */
-export async function upsertListings(db: ListingsDB, rows: ListingValues[]) {
+/** Inserts or updates in chunks (write model only); returns how many rows were new. */
+export async function upsertListings(db: Pick<ListingsDB, "insert">, rows: ListingValues[]) {
   let inserted = 0;
   for (let i = 0; i < rows.length; i += IMPORT_LIMITS.chunk) {
     const chunk = rows.slice(i, i + IMPORT_LIMITS.chunk);
@@ -177,8 +166,11 @@ export interface ImportSummary {
   problems: ImportProblem[];
 }
 
-/** Imports a GRID listings CSV export. Rows with problems are skipped and reported, never half-written. */
-export async function importGridCsv(db: ListingsDB, input: { fileName: string; csv: string; userId?: string }): Promise<ImportSummary> {
+/**
+ * Command: import a GRID listings CSV export. Rows with problems are skipped and reported; the rest are written
+ * in one transaction with a ListingsImported event, then the read models are projected.
+ */
+export async function importGridCsv(input: { fileName: string; csv: string; userId?: string }): Promise<ImportSummary> {
   if (input.csv.length > IMPORT_LIMITS.maxBytes) throw new Error("The file is larger than 8 MB.");
   const table = parseCsv(input.csv);
   const header = (table[0] ?? []).map((h) => h.trim());
@@ -194,28 +186,35 @@ export async function importGridCsv(db: ListingsDB, input: { fileName: string; c
     if (typeof v === "string") problems.push({ row: i + 2, code: clean(rec.code, 60), reason: v });
     else byCode.set(v.code, v); // a code repeated in one file: the last row wins
   });
-  const [batch] = await db
-    .insert(importBatches)
-    .values({ fileName: input.fileName.slice(0, 200), source: "grid_export", rowsTotal: body.length, createdBy: input.userId ?? null })
-    .returning({ id: importBatches.id });
-  const rows = [...byCode.values()].map((r) => ({ ...r, importBatchId: batch!.id }));
-  const inserted = await upsertListings(db, rows);
-  const summary = { inserted, updated: rows.length - inserted, skipped: problems.length, problems: problems.slice(0, 50) };
-  await db.update(importBatches).set(summary).where(sql`${importBatches.id} = ${batch!.id}`);
-  clearFacetCache();
-  return { batchId: batch!.id, fileName: input.fileName, rowsTotal: body.length, ...summary };
+  return command(input.userId ?? null, async (tx) => {
+    const [batch] = await tx
+      .insert(importBatches)
+      .values({ fileName: input.fileName.slice(0, 200), source: "grid_export", rowsTotal: body.length, createdBy: input.userId ?? null })
+      .returning({ id: importBatches.id });
+    const rows = [...byCode.values()].map((r) => ({ ...r, importBatchId: batch!.id }));
+    const inserted = await upsertListings(tx, rows);
+    const summary = { inserted, updated: rows.length - inserted, skipped: problems.length, problems: problems.slice(0, 50) };
+    await tx.update(importBatches).set(summary).where(sql`${importBatches.id} = ${batch!.id}`);
+    return {
+      result: { batchId: batch!.id, fileName: input.fileName, rowsTotal: body.length, ...summary },
+      events: rows.length ? [{ type: "ListingsImported" as const, keys: rows.map((r) => r.code), payload: { batchId: batch!.id } }] : [],
+    };
+  });
 }
 
-export async function listImports(db: ListingsDB) {
-  const rows = await db.select().from(importBatches).orderBy(desc(importBatches.id)).limit(20);
-  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+/** Query: recent import batches. */
+export function listImports() {
+  return query("imports", async (db) => {
+    const rows = await db.select().from(importBatches).orderBy(desc(importBatches.id)).limit(20);
+    return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+  });
 }
 
 type DemoListing = { id: string; title: string; city: string; area: string; propertyType: string; bedrooms: number; bathrooms: number; floorAreaSqm: number | null; lotAreaSqm: number | null; price: number; status: string; titleType: string; foreignEligible: boolean; notes: string };
 const DEMO_KIND: Record<string, [string, string]> = { condominium: ["residential", "condominium-unit"], house_and_lot: ["residential", "house-and-lot"], lot: ["land", "residential-lot"], commercial: ["commercial", "office-space"] };
 
-/** Loads the harness's 8 fictitious demo listings (source "demo"). Safe to run repeatedly. */
-export async function seedDemoListings(db: ListingsDB) {
+/** Command: loads the harness's 8 fictitious demo listings (source "demo"). Safe to run repeatedly. */
+export async function seedDemoListings() {
   const rows = (demo as DemoListing[]).map((l) =>
     withIndexFields({
       code: l.id,
@@ -237,6 +236,8 @@ export async function seedDemoListings(db: ListingsDB) {
       listedBy: "GRID demo",
     }),
   );
-  await db.insert(listings).values(rows).onConflictDoNothing();
-  return rows.length;
+  return command(null, async (tx) => {
+    const added = await tx.insert(listings).values(rows).onConflictDoNothing().returning({ code: listings.code });
+    return { result: rows.length, events: added.length ? [{ type: "ListingsImported" as const, keys: added.map((a) => a.code), payload: { demo: true } }] : [] };
+  });
 }

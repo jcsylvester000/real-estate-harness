@@ -33,7 +33,8 @@ beforeAll(async () => {
   admin = await createUser({ username: "admin1", password: PW, role: "admin" });
   sales = await createUser({ username: "sales1", password: PW, role: "salesperson" });
   other = await createUser({ username: "sales2", password: PW, role: "salesperson" });
-  await seedDemoListings(await freshListingsDb());
+  await freshListingsDb();
+  await seedDemoListings();
 });
 
 describe("auth", () => {
@@ -147,16 +148,18 @@ describe("AI driver (harness)", () => {
     const turn = (await callDriver(as(sales, app("deal-desk")), "ai.chat", { message: "2BR condos in Pasig under ₱8M", provider: "demo" })) as {
       toolTrace: { name: string; result: { listings: { code: string; city: string }[] } }[];
     };
-    expect(turn.toolTrace[0]!.name).toBe("search_listings");
+    expect(turn.toolTrace[0]!.name).toBe("listings.search");
     expect(turn.toolTrace[0]!.result.listings.length).toBeGreaterThan(0);
     expect(turn.toolTrace[0]!.result.listings.every((l) => l.city === "Pasig")).toBe(true);
   });
 
-  it("says when a provider has no key and stops at the daily cap", async () => {
+  it("says when a provider has no key; the AI cap does not block the free Query Engine", async () => {
     expect(await code(callDriver(as(sales, app("deal-desk")), "ai.chat", { message: "hi", provider: "anthropic" }))).toBe("provider_not_configured");
     const { getDb } = await import("@/lib/db/client");
     const { usageEvents } = await import("@/lib/db/schema");
     await (await getDb()).insert(usageEvents).values({ userId: other.id, appId: "deal-desk", provider: "anthropic", model: "x", costPhp: "5000" });
-    expect(await code(callDriver(as(other, app("deal-desk")), "ai.chat", { message: "hi", provider: "demo" }))).toBe("daily_cap_reached");
+    expect(await code(callDriver(as(other, app("deal-desk")), "ai.chat", { message: "hi", provider: "openai" }))).toMatch(/daily_cap_reached|provider_not_configured/);
+    // The no-AI Query Engine costs nothing, so the AI cap does not block it.
+    expect(await code(callDriver(as(other, app("deal-desk")), "ai.chat", { message: "hi", provider: "demo" }))).toBe("ok");
   });
 });

@@ -19,18 +19,26 @@
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:seed": "tsx scripts/db-seed.ts",
     "listings:import": "tsx scripts/listings-import.ts",
-    "db:generate:listings": "drizzle-kit generate --config drizzle-listings.config.ts"
+    "db:generate:listings": "drizzle-kit generate --config drizzle-listings.config.ts",
+    "projections:rebuild": "tsx scripts/projections-rebuild.ts",
+    "assets:docs": "node scripts/copy-doc-assets.mjs",
+    "predev": "node scripts/copy-doc-assets.mjs",
+    "prebuild": "node scripts/copy-doc-assets.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "~1.2.0",
     "@node-rs/argon2": "~2.2.2",
+    "@tesseract.js-data/eng": "^1.0.0",
     "clsx": "~2.1.1",
     "drizzle-orm": "~0.45.4",
     "lucide-react": "~1.61.0",
+    "mammoth": "^1.13.0",
     "next": "~16.4.2",
+    "pdfjs-dist": "^6.5.438",
     "react": "~19.3.1",
     "react-dom": "~19.3.1",
     "server-only": "~0.0.1",
+    "tesseract.js": "^7.0.0",
     "zod": "~4.6.7"
   },
   "devDependencies": {

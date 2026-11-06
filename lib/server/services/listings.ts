@@ -1,60 +1,65 @@
 /**
- * Listings service: the indexed listings database behind the Listings and Property Finder apps, the
- * listings.* driver methods and the harness tools (search_listings, get_listing_index, get_listing).
+ * Listings service: the listings.* and match.* driver methods and the harness listing tools' backend.
+ * Commands (import, save, delete, buyer profiles) go to the write model; everything else is a query on the
+ * read models (lib/listings/cqrs.ts).
  */
 import { setListingBackend } from "@/lib/harness";
-import { getListingsDb } from "@/lib/listings/db";
+import { buyersForListing, deleteBuyer, listBuyers, matchesForBuyer, matchNow, saveBuyer, type BuyerInput } from "@/lib/listings/buyers";
 import { importGridCsv, listImports } from "@/lib/listings/import";
 import { parseInquiry } from "@/lib/listings/inquiry";
 import { deleteListing, saveListing, type ListingForm } from "@/lib/listings/manage";
+import type { BuyerCriteria } from "@/lib/listings/match";
 import { facets, getListing, searchInput, searchListings, toAiListing, type SearchInput } from "@/lib/listings/search";
-import { invalid } from "../errors";
+import { invalid, notFound } from "../errors";
 
-export async function search(input: SearchInput) {
-  return searchListings(await getListingsDb(), input);
-}
+// -- Queries --
+
+export const search = (input: SearchInput) => searchListings(input);
 
 /** Free text in, filters + results out. No AI involved. */
 export async function ask(text: string, opts: { limit?: number; offset?: number; sort?: SearchInput["sort"] } = {}) {
   const parsed = parseInquiry(text);
-  const result = await search({ ...parsed.filters, ...opts });
+  const result = await searchListings({ ...parsed.filters, ...opts });
   return { parsed, result };
 }
 
-export async function index() {
-  return facets(await getListingsDb());
-}
+export const index = () => facets();
 
 /** One listing. The uploader's email is shown only to GRID brokers and admins in built-in apps. */
 export async function get(code: string, opts: { withContact: boolean }) {
-  const l = await getListing(await getListingsDb(), code);
+  const l = await getListing(code);
   if (!l) return null;
   const { listedByEmail, ...rest } = l;
   return opts.withContact ? { ...rest, listedByEmail } : rest;
 }
 
-export async function save(form: ListingForm, user: { displayName: string; role: string }) {
-  return saveListing(await getListingsDb(), form, user);
+export const imports = () => listImports();
+export const match = (criteria: BuyerCriteria, page: { limit?: number; offset?: number }) => matchNow(criteria, page);
+export const buyers = () => listBuyers();
+export async function buyerMatches(id: string, page: { limit?: number; offset?: number }) {
+  const r = await matchesForBuyer(id, page);
+  if (!r) throw notFound("Buyer profile");
+  return r;
 }
+export const listingBuyers = (code: string) => buyersForListing(code);
 
-export async function remove(code: string) {
-  return deleteListing(await getListingsDb(), code);
-}
+// -- Commands --
+
+export const save = (form: ListingForm, user: { id: string; displayName: string; role: string }) => saveListing(form, user);
+export const remove = (code: string, actor: string) => deleteListing(code, actor);
+export const saveBuyerProfile = (input: BuyerInput, actor: string) => saveBuyer(input, actor);
+export const deleteBuyerProfile = (id: string, actor: string) => deleteBuyer(id, actor);
 
 export async function importCsv(input: { fileName: string; csv: string }, userId: string) {
   try {
-    return await importGridCsv(await getListingsDb(), { ...input, userId });
+    return await importGridCsv({ ...input, userId });
   } catch (err) {
     if (err instanceof Error && /export|rows|8 MB/.test(err.message)) throw invalid(err.message);
     throw err;
   }
 }
 
-export async function imports() {
-  return listImports(await getListingsDb());
-}
-
-// The harness reads the same index. Results go to the AI without uploader names or contacts.
+// The harness reads the same read models. Results go to the AI without uploader names or contacts.
 setListingBackend({
   async search(raw) {
     const parsed = searchInput.safeParse(raw);
@@ -75,6 +80,6 @@ setListingBackend({
   async get(code) {
     const l = await get(code, { withContact: false });
     if (!l) return null;
-    return { ...toAiListing(l), notes: l.notes, bathrooms: l.bathrooms, titleType: l.titleType, foreignEligible: l.foreignEligible, publishedAt: l.publishedAt };
+    return { ...toAiListing(l), notes: l.notes, bathrooms: l.bathrooms, titleType: l.titleType, foreignEligible: l.foreignEligible, publishedAt: l.publishedAt, analysis: l.analysis };
   },
 });

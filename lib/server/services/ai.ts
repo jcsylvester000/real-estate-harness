@@ -17,6 +17,8 @@ import {
 import { getDb } from "@/lib/db/client";
 import { chatSessions, usageEvents } from "@/lib/db/schema";
 import "./listings"; // registers the listings index as the harness inventory
+import "./lenders"; // registers the editable lender rates for compare_mortgage_lenders
+import { clearEngineState, engineTurn } from "./engine";
 import { DriverError, invalid, notFound } from "../errors";
 
 
@@ -90,7 +92,7 @@ export function providerList() {
     .filter((id) => id !== "demo" || cfg.demoEnabled)
     .map((id) => ({
       id,
-      label: { anthropic: "Claude", openai: cfg.openaiLabel, gemini: "Gemini", demo: "Smart search (no AI key)" }[id],
+      label: { anthropic: "Claude", openai: cfg.openaiLabel, gemini: "Gemini", demo: "Query Engine (no AI)" }[id],
       configured: id === "demo" ? cfg.demoEnabled : Boolean(cfg.providers[id].apiKey),
       models: cfg.providers[id].models,
       isDefault: id === cfg.defaultProvider,
@@ -127,6 +129,15 @@ export async function chat(userId: string, appId: string, input: ChatInput): Pro
   const cfg = harnessConfig();
   const providerId = pickProvider(input.provider);
   const tier: ModelTier = input.tier === "budget" ? "budget" : "balanced";
+
+  // No-AI Query Engine: rule-based, free, no daily cap.
+  if (providerId === "demo") {
+    const sid = input.sessionId && UUID.test(input.sessionId) ? input.sessionId : crypto.randomUUID();
+    const turn = await engineTurn(userId, appId, message, sid, new PgSessionStore(userId, appId, message.slice(0, 60)));
+    // Metered at zero cost so the Usage tab counts engine turns too.
+    await (await getDb("write")).insert(usageEvents).values({ userId, appId, sessionId: sid, provider: "demo", model: turn.model, steps: turn.steps, tools: turn.toolTrace.map((t) => t.name), costUsd: "0", costPhp: "0" });
+    return { ...turn, spentTodayPhp: await spentTodayPhp(userId), dailyCapPhp: cfg.limits.dailyCapPhp };
+  }
 
   const before = await spentTodayPhp(userId);
   if (cfg.limits.dailyCapPhp > 0 && before >= cfg.limits.dailyCapPhp)
@@ -188,5 +199,6 @@ export async function getSession(userId: string, appId: string, sessionId: strin
 
 export async function deleteSession(userId: string, appId: string, sessionId: string) {
   await new PgSessionStore(userId, appId).clear(sessionId);
+  if (UUID.test(sessionId)) await clearEngineState(userId, appId, sessionId);
   return true;
 }

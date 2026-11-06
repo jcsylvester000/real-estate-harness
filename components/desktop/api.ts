@@ -27,7 +27,7 @@ export async function driverCall<T = unknown>(appId: string, method: string, par
     throw new CallError("server_error", `The server answered with HTTP ${res.status}.`);
   }
   if (res.status === 401 || data.error?.code === "signed_out") {
-    window.location.assign(new URL("/login", window.location.origin).href);
+    window.location.assign(new URL("/desktop", window.location.origin).href);
     throw new CallError("signed_out", "Your session has ended.");
   }
   if (!data.ok) throw new CallError(data.error?.code ?? "error", data.error?.message ?? "Request failed.");

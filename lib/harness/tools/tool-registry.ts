@@ -5,6 +5,7 @@ import { checkForeignOwnershipTool } from "./check-foreign-ownership";
 import { computeAcquisitionCostsTool } from "./compute-acquisition-costs";
 import { computeCommissionTool } from "./compute-commission";
 import { computeLoanAmortizationTool } from "./compute-loan-amortization";
+import { compareMortgageLendersTool } from "./compare-mortgage-lenders";
 import { computeMacedaRefundTool } from "./compute-maceda-refund";
 import { getDocumentChecklistTool, getRuleTopicTool } from "./lookup-tools";
 import { getListingIndexTool, getListingTool, searchListingsTool } from "./search-listings";
@@ -49,6 +50,7 @@ export class ToolRegistry {
 export const DEFAULT_TOOLS: HarnessTool<any>[] = [
   computeAcquisitionCostsTool,
   computeLoanAmortizationTool,
+  compareMortgageLendersTool,
   computeCommissionTool,
   computeMacedaRefundTool,
   checkForeignOwnershipTool,

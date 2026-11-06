@@ -10,7 +10,9 @@ const appOrigins = (process.env.GRID_APP_ORIGINS ?? "").split(/\s+/).filter((o) 
  */
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
+  // 'wasm-unsafe-eval' lets the self-hosted OCR engine (tesseract.js WebAssembly) run; it does not allow eval().
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${dev ? " 'unsafe-eval'" : ""}`,
+  "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",

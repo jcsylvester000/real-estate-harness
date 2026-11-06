@@ -20,8 +20,7 @@ const fail = (code: string, message: string, status: number) =>
 export async function POST(req: Request) {
   if (!(await isSameOrigin())) return fail("bad_origin", "Requests must come from the Grid Agentic desktop.", 403);
   const session = await getCurrentSession();
-  if (!session) return fail("signed_out", "Your session has ended. Sign in again.", 401);
-  if (session.user.mustChangePassword) return fail("password_change_required", "Change your password first.", 403);
+  if (!session) return fail("signed_out", "The desktop is locked. Enter the PIN again.", 401);
 
   const len = Number(req.headers.get("content-length") ?? 0);
   if (len > MAX_BODY) return fail("too_large", "Request is too large (6 MB max).", 413);

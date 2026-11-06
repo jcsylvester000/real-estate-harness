@@ -1,13 +1,12 @@
 import { expect, type Page } from "@playwright/test";
 
-export const ADMIN = { username: "e2e_admin", password: "admin pass phrase for tests" };
+export const PIN = "4120";
 
-export async function signIn(page: Page, user = ADMIN) {
-  await page.goto("/login");
-  await page.getByLabel("Username").fill(user.username);
-  await page.getByLabel("Password").fill(user.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/desktop|\/change-password/);
+/** Unlocks the desktop with the team PIN (the modal auto-submits on the fourth digit). */
+export async function signIn(page: Page, pin = PIN) {
+  await page.goto("/desktop");
+  await page.getByLabel("PIN").fill(pin);
+  await expect(page.getByRole("navigation", { name: "Taskbar" })).toBeVisible();
 }
 
 /** Opens an app from its desktop icon and returns a locator for its iframe content. */

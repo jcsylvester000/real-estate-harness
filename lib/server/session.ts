@@ -32,11 +32,17 @@ export async function currentToken() {
 
 export const getCurrentSession = cache(async (): Promise<ActiveSession | null> => validateSession(await currentToken()));
 
+/** Pages inside the desktop: no session means the desktop shows the PIN modal. */
 export async function requireUser(): Promise<ActiveSession> {
   const s = await getCurrentSession();
-  if (!s) redirect("/login");
-  if (s.user.mustChangePassword) redirect("/change-password");
+  if (!s) redirect("/desktop");
   return s;
+}
+
+/** Network address for the PIN lockout. Used only as a keyed hash. */
+export async function clientAddress() {
+  const h = await headers();
+  return h.get("x-nf-client-connection-ip") || h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown";
 }
 
 export async function requireAdmin() {
