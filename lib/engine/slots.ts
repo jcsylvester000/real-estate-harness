@@ -122,7 +122,7 @@ export function extractSlots(text: string): Slots {
 
   for (const [id, re] of Object.entries(LENDER_ALIASES)) if (re.test(text)) s.lenderIds.push(id);
 
-  const code = text.match(/\b(GRID[_-][A-Z0-9-]{3,}|DEMO-\d{3})\b/i)?.[1];
+  const code = text.match(/\b(?=[A-Z0-9_-]*\d)([A-Z]{2,10}[_-][A-Z0-9_-]{3,})\b/)?.[1];
   if (code) s.code = code.toUpperCase();
   const num = t.match(/(?:#|number|no\.?|item|result|listing)\s?(\d{1,2})\b/);
   if (num) s.ordinal = Number(num[1]);

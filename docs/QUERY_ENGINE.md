@@ -38,6 +38,27 @@ Deal Desk's no-AI mode. It never writes free text of its own: each reply is a te
 | "what does the contract say about penalties" | doc_ask | `docs.search` (Postgres full text) → best sentences, quoted with file and page | a document |
 | "summarize my notes" | notes_summary | Notes/Files text files → per-note summary + action items | notes |
 
+## "/" commands (pick instead of type)
+
+Type `/` in Deal Desk (or press the / button, or a start card) and pick a feature. Deal Desk then asks only what it needs, one step at a time, with the likely answers listed: listings and prices from the conversation come first ("From chat"), then presets; typing filters the list, and a typed amount or place can be used as is. The finished flow becomes an ordinary sentence, so it works the same with the Query Engine or a real AI.
+
+| Command | Steps | Sentence sent |
+|---|---|---|
+| Search property | Buy or rent → kind (from the index) → place (top cities, or type one) → budget | "Find condo for rent in Taguig under ₱60k" |
+| Buyer matching | Saved buyer, or New buyer → buy/rent → kind → place → budget → purpose | "Matches for saved buyer …" / "Match a buyer looking for …" |
+| Calculator | Compare all lenders · One lender · Affordability · Taxes and fees · Commission · Maceda · Foreign buyer, then price, down payment, term… | e.g. "Pag-IBIG Fund home loan for ₱3M, 10% down, 30 years" |
+| Listings | Search by name, building, place or code → Details · Matching buyers · Compare lenders · Taxes and fees | "Details on GRID_…", "Compare lenders for GRID_…, 20% down, 20 years" |
+| Lenders | Lender (with lowest published rate) → price → down payment → term | "BDO home loan for ₱5M, 20% down, 20 years" |
+| Notes | A note, or all notes → Summarize · Action items | "Summarize note …", "Action items in note …" |
+| Documents | An upload → Summarize · Key dates and amounts · Ask a question (fills the box) | "Summarize …", "In …, what does it say about " |
+
+Keys: ↑ ↓ move, Enter or Tab pick, Backspace on an empty box goes back a step, Esc closes. Code: `components/apps/command-menu.tsx`.
+
+**Predicting the next move**
+- Commands are ordered by what usually follows the last answer (after a search: Listings, Buyer matching, Calculator; after a loan comparison: Lenders) and marked "Suggested".
+- "Up next" chips above the box: the last answer's follow-ups plus the command that fits what is on screen.
+- Ghost text completes the sentence as you type (your own past questions first, then common phrasings, then places, kinds, lenders and document names); Tab or → accepts. Code: `components/apps/predict.ts`.
+
 ## Documents and OCR
 
 - Extraction runs in the browser (`components/apps/doc-extract.ts`), so the file stays on the device; only text is sent.

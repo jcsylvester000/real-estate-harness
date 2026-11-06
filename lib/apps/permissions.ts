@@ -39,6 +39,7 @@ export const METHOD_PERMISSION: Record<string, Permission | null> = {
   "tools.list": "tools",
   "tools.run": "tools",
   "docs.list": "docs",
+  "docs.notes": "docs",
   "docs.get": "docs",
   "docs.search": "docs",
   "docs.add": "docs",

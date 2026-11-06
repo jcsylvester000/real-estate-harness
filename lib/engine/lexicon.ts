@@ -103,7 +103,7 @@ export const INTENTS: Record<IntentId, IntentSpec> = {
     does: "Shows one listing's details and what matching sees in it.",
     tool: "listings.get",
     examples: ["details of GRID-123", "tell me more about the first one", "open number 2", "yung pangalawa", "more info on the third", "what about #1", "show listing DEMO-001", "describe the top result", "ano details ng una"],
-    cues: [/\b(GRID[_-][A-Z0-9-]{3,}|DEMO-\d{3})\b/i, /\b(first|second|third|fourth|fifth|una|pangalawa|ikalawa|pangatlo|ikatlo|#\s?\d)\b/i],
+    cues: [/\b(?=[A-Z0-9_-]*\d)([A-Z]{2,10}[_-][A-Z0-9_-]{3,})\b/, /\b(first|second|third|fourth|fifth|una|pangalawa|ikalawa|pangatlo|ikatlo|#\s?\d)\b/i],
     needs: ["listing"],
   },
   more_results: {
@@ -130,6 +130,8 @@ export const INTENTS: Record<IntentId, IntentSpec> = {
       "find the best matching properties for an investor wanting rental income in makati",
       "rank listings for a buyer",
       "buyer matching for 2br condo in ortigas",
+      "matches for saved buyer",
+      "show matches for my saved buyer",
     ],
     cues: [/\b(match|matching|best fit|score|rank|i-?match|tugma)\b/i, /\b(match|i-?match|score|rank)\b.{0,40}\b(buyers?|clients?|family|investor|tenant)\b/i],
   },
@@ -249,7 +251,7 @@ export const INTENTS: Record<IntentId, IntentSpec> = {
   notes_summary: {
     does: "Summarizes your notes in the Notes app.",
     tool: "fs.read",
-    examples: ["summarize my notes", "what did i write in my notes", "buod ng notes ko", "recap my notes", "action items from my notes", "summarize the meeting notes"],
+    examples: ["summarize my notes", "what did i write in my notes", "buod ng notes ko", "recap my notes", "action items from my notes", "summarize the meeting notes", "summarize note", "action items in note", "to-dos from my notes"],
     cues: [/\bnotes?\b/i],
   },
 };

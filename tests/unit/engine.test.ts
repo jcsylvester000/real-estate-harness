@@ -56,3 +56,21 @@ describe("document text tools", () => {
     expect(parts.every((p) => p.length <= 320)).toBe(true);
   });
 });
+
+import { predict } from "@/components/apps/predict";
+import { parseAmount } from "@/components/apps/command-menu";
+describe("Deal Desk typing helpers", () => {
+  const ctx = { asks: ["Compare lenders for TEST_0006, 20% down, 20 years"], places: ["Taguig", "Makati"], docs: ["Contract to Sell"] };
+  it("completes from the user's own questions first, then common phrasings, then words", () => {
+    expect(predict("Compare lenders for T", ctx)).toBe("EST_0006, 20% down, 20 years");
+    expect(predict("How much can a buyer", ctx)).toBe(" earning ₱80k a month afford?");
+    expect(predict("condo for rent in Tag", ctx)).toBe("uig");
+    expect(predict("/sea", ctx)).toBe("");
+  });
+  it("reads typed amounts", () => {
+    expect(parseAmount("7.6M")).toBe(7_600_000);
+    expect(parseAmount("₱60k")).toBe(60_000);
+    expect(parseAmount("1,250,000")).toBe(1_250_000);
+    expect(parseAmount("abc")).toBeNull();
+  });
+});

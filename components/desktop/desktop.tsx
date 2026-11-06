@@ -14,6 +14,9 @@ import { lockAction } from "@/app/(auth)/actions";
 import { CallError, driverCall } from "./api";
 import { DialogHost, Toasts, type DialogSpec, type OpenDialog, type Toast } from "./dialogs";
 import { AppIcon, AppTile } from "./icons";
+import { DesktopIcons, useIconLayout } from "./desktop-icons";
+import type { IconLayout } from "@/lib/apps/icon-layout";
+import { SpotlightTracker } from "@/components/apps/spotlight";
 import { TASKBAR_H, WindowFrame, type Win } from "./window-frame";
 
 import { WALLPAPERS } from "@/lib/apps/wallpapers";
@@ -45,7 +48,8 @@ export interface AiState {
   providers: string[];
 }
 
-export function Desktop({ user, initialApps, initialWallpaper, ai }: { user: DesktopUser; initialApps: AppInfo[]; initialWallpaper: string; ai: AiState }) {
+export function Desktop({ user, initialApps, initialWallpaper, initialIcons, ai }: { user: DesktopUser; initialApps: AppInfo[]; initialWallpaper: string; initialIcons: IconLayout; ai: AiState }) {
+  const icons = useIconLayout(initialIcons);
   const [apps, setApps] = useState<AppInfo[]>(initialApps);
   const [wins, setWins] = useState<Win[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -318,7 +322,7 @@ export function Desktop({ user, initialApps, initialWallpaper, ai }: { user: Des
       onContextMenu={(e) => {
         if ((e.target as HTMLElement).closest("[data-desktop-surface]")) {
           e.preventDefault();
-          setMenu({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 160) });
+          setMenu({ x: Math.min(e.clientX, window.innerWidth - 232), y: Math.min(e.clientY, window.innerHeight - 260) });
         }
       }}
       onPointerDown={(e) => {
@@ -326,26 +330,30 @@ export function Desktop({ user, initialApps, initialWallpaper, ai }: { user: Des
         if (!(e.target as HTMLElement).closest("[data-start]")) setStartOpen(false);
       }}
     >
+      <div className="ga-aurora" aria-hidden />
+      <SpotlightTracker />
       <main data-desktop-surface aria-label="Desktop" className="absolute inset-0" style={{ bottom: TASKBAR_H }}>
         <h1 className="sr-only">Grid Agentic desktop</h1>
-        <ul className="grid w-max grid-flow-col grid-rows-[repeat(auto-fill,104px)] gap-1 p-3" style={{ maxHeight: `calc(100% - 8px)` }}>
-          {visibleApps.map((a) => (
-            <li key={a.id}>
-              <button
-                type="button"
-                data-desktop-icon={a.id}
-                onDoubleClick={() => openApp(a.id)}
-                onClick={(e) => (compact || e.detail === 0) && openApp(a.id)}
-                onKeyDown={(e) => e.key === "Enter" && openApp(a.id)}
-                className="flex w-[88px] flex-col items-center gap-1.5 rounded-lg p-2 text-center text-[12px] leading-tight text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.7)] hover:bg-white/10 focus-visible:bg-white/15"
-                title={a.description}
-              >
-                <AppTile icon={a.icon} />
-                <span className="line-clamp-2">{a.name}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        {compact ? (
+          <ul className="grid w-max grid-flow-col grid-rows-[repeat(auto-fill,104px)] gap-1 p-3" style={{ maxHeight: `calc(100% - 8px)` }}>
+            {visibleApps.map((a) => (
+              <li key={a.id}>
+                <button
+                  type="button"
+                  data-desktop-icon={a.id}
+                  onClick={() => openApp(a.id)}
+                  className="flex w-[88px] flex-col items-center gap-1.5 rounded-lg p-2 text-center text-[12px] leading-tight text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.7)] hover:bg-white/10 focus-visible:bg-white/15"
+                  title={a.description}
+                >
+                  <AppTile icon={a.icon} />
+                  <span className="line-clamp-2">{a.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <DesktopIcons apps={visibleApps} layout={icons.layout} update={icons.update} onOpen={(id) => openApp(id)} />
+        )}
         {wins.length === 0 && (
           <div className="pointer-events-none absolute right-6 bottom-6 hidden max-w-xs text-right text-cream/80 md:block">
             <p className="font-display text-2xl text-cream">Magandang araw, {user.displayName.split(" ")[0]}.</p>
@@ -376,13 +384,48 @@ export function Desktop({ user, initialApps, initialWallpaper, ai }: { user: Des
       ))}
 
       {menu && (
-        <div data-menu role="menu" className="card fixed z-[7000] w-48 py-1 text-sm" style={{ left: menu.x, top: menu.y }}>
+        <div data-menu role="menu" className="card ga-pop fixed z-[7000] w-56 py-1 text-sm" style={{ left: menu.x, top: menu.y }}>
+          <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold tracking-wider text-muted uppercase">Icons</p>
+          {(
+            [
+              ["grid", "Snap icons to grid"],
+              ["free", "Free icon placement"],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              role="menuitemradio"
+              aria-checked={icons.layout.mode === mode}
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-sand"
+              onClick={() => {
+                setMenu(null);
+                icons.setMode(mode);
+              }}
+            >
+              <span className={`size-1.5 rounded-full ${icons.layout.mode === mode ? "bg-bronze" : "bg-transparent"}`} aria-hidden />
+              {label}
+            </button>
+          ))}
+          <button
+            role="menuitem"
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-sand"
+            onClick={() => {
+              setMenu(null);
+              icons.tidy();
+            }}
+          >
+            <span className="size-1.5" aria-hidden />
+            Tidy up icons
+          </button>
+          <hr className="my-1 border-line" />
           {DESKTOP_MENU.map((it) => (
             <button
               key={it.label}
               role="menuitem"
               type="button"
-              className="block w-full px-3 py-1.5 text-left hover:bg-sand"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-sand"
               onClick={() => {
                 setMenu(null);
                 openApp(it.appId, it.args);
@@ -395,7 +438,7 @@ export function Desktop({ user, initialApps, initialWallpaper, ai }: { user: Des
       )}
 
       {startOpen && (
-        <div data-start className="card fixed bottom-[60px] left-2 z-[7000] flex max-h-[min(560px,calc(100dvh-80px))] w-[min(380px,calc(100vw-16px))] flex-col overflow-hidden">
+        <div data-start className="card ga-pop fixed bottom-[60px] left-2 z-[7000] flex max-h-[min(560px,calc(100dvh-80px))] w-[min(380px,calc(100vw-16px))] flex-col overflow-hidden">
           <div className="border-b border-line p-3">
             <label htmlFor="start-search" className="sr-only">
               Search apps
@@ -416,7 +459,7 @@ export function Desktop({ user, initialApps, initialWallpaper, ai }: { user: Des
           <ul className="min-h-0 flex-1 overflow-auto p-2">
             {filtered.map((a) => (
               <li key={a.id}>
-                <button type="button" onClick={() => openApp(a.id)} className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-sand">
+                <button type="button" onClick={() => openApp(a.id)} className="spotlight group relative flex w-full items-center gap-3 overflow-hidden rounded-xl p-2 text-left transition-colors hover:bg-sand">
                   <AppTile icon={a.icon} size={36} />
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">{a.name}</span>
@@ -469,11 +512,12 @@ export function Desktop({ user, initialApps, initialWallpaper, ai }: { user: Des
                   if (w.id === activeId) setWins((ws) => ws.map((x) => (x.id === w.id ? { ...x, minimized: true } : x)));
                   else focus(w.id);
                 }}
-                className={`flex h-10 max-w-48 items-center gap-2 rounded-lg px-2.5 text-[13px] hover:bg-white/10 ${w.id === activeId ? "bg-white/15" : ""} ${w.minimized ? "opacity-60" : ""}`}
+                className={`relative flex h-10 max-w-48 items-center gap-2 rounded-lg px-2.5 text-[13px] transition-all duration-200 hover:-translate-y-px hover:bg-white/10 ${w.id === activeId ? "bg-white/15" : ""} ${w.minimized ? "opacity-60" : ""}`}
                 title={w.title}
               >
                 <AppIcon icon={w.app.icon} size={16} className="text-gold" />
                 <span className="hidden truncate sm:inline">{w.title}</span>
+                {w.id === activeId && <span className="ga-limelight absolute right-3 bottom-0.5 left-3 h-[2px] rounded-full bg-gold" aria-hidden />}
               </button>
             </li>
           ))}

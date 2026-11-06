@@ -7,7 +7,7 @@ import { ToolRegistry, type ChatMessage, type HarnessTurnResult } from "@/lib/ha
 import { getDb } from "@/lib/db/client";
 import { kv } from "@/lib/db/schema";
 import { runEngine, type EngineState, type EngineTools } from "@/lib/engine/engine";
-import { buyersForListing, matchNow } from "@/lib/listings/buyers";
+import { buyersForListing, listBuyers, matchNow } from "@/lib/listings/buyers";
 import { facets, getListing, searchListings } from "@/lib/listings/search";
 import * as docs from "./documents";
 import * as lenders from "./lenders";
@@ -33,7 +33,8 @@ export function engineTools(userId: string): EngineTools {
     listDocuments: () => docs.listDocuments(userId),
     getDocumentText: async (id) => (await docs.getDocument(userId, id, true)).text ?? "",
     searchDocuments: (q, ids) => docs.searchDocuments(userId, q, { documentIds: ids }),
-    notes: () => docs.recentNotes(userId),
+    notes: () => docs.recentNotes(userId, 30),
+    buyers: async () => (await listBuyers()).map((b) => ({ id: b.id, label: b.label, criteria: b.criteria })),
   };
 }
 

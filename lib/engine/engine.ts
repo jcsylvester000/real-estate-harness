@@ -43,6 +43,8 @@ export interface EngineTools {
   getDocumentText(id: string): Promise<string>;
   searchDocuments(q: string, documentIds?: string[]): Promise<{ documentId: string; name: string; page: number | null; text: string }[]>;
   notes(): Promise<{ path: string; name: string; content: string; updatedAt: string }[]>;
+  /** Saved buyer profiles (Buyer Matching). */
+  buyers(): Promise<{ id: string; label: string; criteria: BuyerCriteria }[]>;
 }
 
 /** What the engine remembers between turns of one conversation. */
@@ -120,13 +122,13 @@ function decideIntent(message: string, slots: Slots, state: EngineState, cls: Re
   }
   let intent = cls.intent;
   // A question that names an uploaded document is about that document.
-  if (hasDocs && (mentionsDoc(message, docs) || /\b(say|says|said|sabi|nakasulat|mention(s|ed)?)\b/i.test(message)) && !(intent && DOC_INTENTS.includes(intent)) && intent !== "doc_list") {
+  if (hasDocs && !/\bnotes?\b/i.test(message) && !slots.code && (mentionsDoc(message, docs) || /\b(say|says|said|sabi|nakasulat|mention(s|ed)?)\b/i.test(message)) && !(intent && DOC_INTENTS.includes(intent)) && intent !== "doc_list") {
     if (/\b(summar|buod|gist|tl;?dr|key points|overview)/i.test(message)) return "doc_summary";
     if (/\b(deadlines?|dates?|amounts?|figures?|action items?|to-?dos?|petsa)\b/i.test(message)) return "doc_facts";
     if (!slots.price && !slots.income) return "doc_ask";
   }
   // Document words without uploads → it is probably about listings or notes.
-  if (intent && DOC_INTENTS.includes(intent) && !hasDocs && /\bnotes?\b/i.test(message)) intent = "notes_summary";
+  if (intent && DOC_INTENTS.includes(intent) && /\bnotes?\b/i.test(message) && !mentionsDoc(message, docs)) intent = "notes_summary";
   if (intent === "doc_summary" && /\bnotes?\b/i.test(message)) intent = "notes_summary";
   if (intent === "loan_payment" && slots.ratePct === undefined) intent = "mortgage_compare";
   if (!intent && Object.keys(slots.filters).length) intent = "find_listings";
@@ -288,9 +290,12 @@ export async function runEngine(message: string, prev: EngineState | null, tools
       if (slots.ratePct !== undefined) loan.ratePct = slots.ratePct;
       if (slots.lenderIds.length) loan.lenderIds = slots.lenderIds;
       else if (/\b(all|lahat|compare|every|banks)\b/i.test(message)) loan.lenderIds = undefined;
-      if (!loan.price && slots.ordinal && state.lastCodes) {
-        const l = await tools.getListing(state.lastCodes[slots.ordinal - 1]!);
-        if (l?.transactionType === "sale") loan.price = l.price;
+      if (!slots.price && (slots.code || (slots.ordinal && state.lastCodes))) {
+        const l = await tools.getListing(slots.code ?? state.lastCodes![slots.ordinal! - 1]!);
+        if (l?.transactionType === "sale") {
+          loan.price = l.price;
+          state.focusCode = l.code;
+        }
       }
       if (!loan.price && /\b(it|this|that|ito|iyan|yan)\b/i.test(message) && state.focusPrice) loan.price = state.focusPrice;
       state.loan = loan;
@@ -326,7 +331,7 @@ export async function runEngine(message: string, prev: EngineState | null, tools
     case "commission":
     case "maceda":
     case "foreign": {
-      const price = slots.price ?? (FOLLOW_UP.test(message) || /\b(it|this|ito)\b/i.test(message) ? state.focusPrice ?? state.loan?.price : undefined) ?? (slots.ordinal && state.lastCodes ? (await tools.getListing(state.lastCodes[slots.ordinal - 1]!))?.price : undefined);
+      const price = slots.price ?? (slots.code ? (await tools.getListing(slots.code))?.price : undefined) ?? (FOLLOW_UP.test(message) || /\b(it|this|ito)\b/i.test(message) ? state.focusPrice ?? state.loan?.price : undefined) ?? (slots.ordinal && state.lastCodes ? (await tools.getListing(state.lastCodes[slots.ordinal - 1]!))?.price : undefined);
       let name = "";
       let args: Record<string, unknown> = {};
       if (intent === "costs") {
@@ -407,17 +412,28 @@ export async function runEngine(message: string, prev: EngineState | null, tools
     }
 
     case "notes_summary": {
-      const notes = (await tools.notes()).filter((n) => !/^\/Deals\/deal-desk-/.test(n.path) && n.content.trim().length > 20);
+      let notes = (await tools.notes()).filter((n) => !/^\/Deals\/deal-desk-/.test(n.path) && n.content.trim().length > 20);
+      // "summarize note Meeting with Santos" → just that note.
+      const words = new Set(tokens(message));
+      const named = notes.filter((n) => {
+        const ts = tokens(n.name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]/g, " ")).filter((w) => w.length > 2);
+        return ts.length > 0 && ts.filter((w) => words.has(w)).length >= Math.min(2, ts.length);
+      });
+      if (named.length) notes = named.slice(0, 1);
+      const actionsOnly = /\b(action items?|to-?dos?|tasks?|gagawin)\b/i.test(message);
       trace.push({ name: "fs.read", arguments: { notes: notes.length }, result: notes.map((n) => n.path) });
       if (!notes.length) return out("I didn't find any notes in Files yet. Write one in the Notes app (it saves to Documents) and ask again.");
-      const lines: string[] = [`Your **${notes.length}** most recent note${notes.length === 1 ? "" : "s"}:`, ""];
+      const lines: string[] = named.length ? [] : [`Your **${notes.length}** most recent note${notes.length === 1 ? "" : "s"}:`, ""];
       const actions: string[] = [];
       for (const n of notes.slice(0, 6)) {
-        const s = summarize(n.content, 2);
-        lines.push(`**${cell(n.name)}**`, ...(s.length ? s : [n.content.slice(0, 200)]).map((x) => `- ${x}`), "");
         actions.push(...extractActions(n.content));
+        if (actionsOnly) continue;
+        const s = summarize(n.content, named.length ? 4 : 2);
+        lines.push(`**${cell(n.name)}**`, ...(s.length ? s : [n.content.slice(0, 200)]).map((x) => `- ${x}`), "");
       }
-      if (actions.length) lines.push("**Action items**", ...[...new Set(actions)].slice(0, 8).map((a) => `- [ ] ${a}`));
+      if (actions.length) lines.push(actionsOnly ? `**Action items${named.length ? ` in ${cell(notes[0]!.name)}` : ""}**` : "**Action items**", ...[...new Set(actions)].slice(0, 10).map((a) => `- [ ] ${a}`));
+      else if (actionsOnly) lines.push("I didn't find action items (lines starting with “- [ ]”, “Call”, “Send”, “Follow up”…).");
+      suggestions.push(actionsOnly ? "summarize my notes" : "action items from my notes");
       return out(lines.join("\n"));
     }
   }
@@ -425,9 +441,19 @@ export async function runEngine(message: string, prev: EngineState | null, tools
 
   // -- helpers that use the turn's state --
 
+  /** "matches for saved buyer BGC renter" → that saved profile. */
+  async function findSavedBuyer() {
+    if (!/\bsaved buyer|\bbuyer profile|\bmatches for\b/i.test(message)) return undefined;
+    const list = await tools.buyers();
+    const m = message.toLowerCase();
+    return list.find((b) => m.includes(b.label.toLowerCase())) ?? list.find((b) => tokens(b.label).filter((w) => w.length > 2).every((w) => tokens(message).includes(w)));
+  }
+
   async function matchTurn(more: boolean): Promise<EngineReply> {
     let c: BuyerCriteria;
-    if (more && state.criteria) c = state.criteria;
+    const saved = more ? undefined : await findSavedBuyer();
+    if (saved) c = { ...saved.criteria, minScore: Math.min(saved.criteria.minScore, 6) };
+    else if (more && state.criteria) c = state.criteria;
     else {
       const f = criteriaFrom(slots, message);
       if (state.lastIntent === "match_buyer" && FOLLOW_UP.test(message.trim()) && state.criteria) {

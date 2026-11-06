@@ -104,8 +104,8 @@ export function WindowFrame({
       role="dialog"
       aria-label={win.title}
       data-window={win.app.id}
-      className={`absolute flex flex-col overflow-hidden bg-cream ${max ? "" : "rounded-xl"} ${
-        focused ? "shadow-[0_24px_60px_-12px_rgb(0_0_0/0.6)] ring-1 ring-black/20" : "shadow-[0_12px_30px_-12px_rgb(0_0_0/0.45)] ring-1 ring-black/10"
+      className={`ga-win-in absolute flex flex-col overflow-hidden bg-cream transition-shadow duration-300 ${max ? "" : "rounded-xl"} ${
+        focused ? "shadow-[0_30px_70px_-14px_rgb(0_0_0/0.65),0_0_0_1px_rgb(226_185_133/0.18)] ring-1 ring-black/20" : "shadow-[0_12px_30px_-12px_rgb(0_0_0/0.45)] ring-1 ring-black/10 saturate-[.92]"
       } ${win.minimized ? "hidden" : ""}`}
       style={style}
       onPointerDownCapture={onFocus}

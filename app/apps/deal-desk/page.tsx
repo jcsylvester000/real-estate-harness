@@ -1,11 +1,33 @@
 "use client";
-import { ChevronRight, FileText, History, Paperclip, Plus, Save, Send, Trash2, TriangleAlert, Wrench, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ArrowUp,
+  Building2,
+  Calculator,
+  ChevronRight,
+  FileText,
+  Handshake,
+  History,
+  NotebookPen,
+  Paperclip,
+  Plus,
+  Save,
+  Search,
+  Slash,
+  Sparkles,
+  Trash2,
+  TriangleAlert,
+  Wrench,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppFrame } from "@/components/apps/app-frame";
+import { CommandPanel, useCommandMenu, type DeskContext, type Opt } from "@/components/apps/command-menu";
+import { ACCEPT, extractDocument } from "@/components/apps/doc-extract";
 import { Markdown } from "@/components/apps/markdown";
+import { predict } from "@/components/apps/predict";
 import { ResultView, php } from "@/components/apps/result-view";
 import { errText } from "@/components/apps/use-grid";
-import { ACCEPT, extractDocument } from "@/components/apps/doc-extract";
 import type { ChatTurn, DocSummary, GridSDK, ProviderInfo } from "@/lib/sdk/types";
 
 interface Msg {
@@ -17,41 +39,65 @@ interface Msg {
   suggestions?: string[];
 }
 
+/** Start cards: each opens a "/" command flow. */
+const STARTERS: { cmd: string; label: string; hint: string; icon: LucideIcon; tone: string }[] = [
+  { cmd: "search", label: "Search property", hint: "Buy or rent, kind, place, budget", icon: Search, tone: "from-ok/15" },
+  { cmd: "match", label: "Buyer matching", hint: "Score listings 1–10 for a buyer", icon: Handshake, tone: "from-[#7c3a5b]/15" },
+  { cmd: "calc", label: "Calculator", hint: "Lenders, affordability, taxes…", icon: Calculator, tone: "from-gold/30" },
+  { cmd: "listings", label: "Listings", hint: "Details, buyers, loans, costs", icon: Building2, tone: "from-panel/15" },
+  { cmd: "notes", label: "Notes", hint: "Summaries and action items", icon: NotebookPen, tone: "from-bronze/20" },
+  { cmd: "docs", label: "Documents", hint: "PDF, Word, photos (OCR)", icon: FileText, tone: "from-info/15" },
+];
+
 const QUICK = [
-  { label: "Find listings", text: "2BR condo for rent in BGC under 60k" },
-  { label: "Match a buyer", text: "Match a buyer looking for a house and lot in Cavite, budget 6M, near schools" },
-  { label: "Compare lenders", text: "Compare lenders for a ₱7.6M condo, 20% down, 20 years" },
-  { label: "Affordability", text: "How much can a buyer earning ₱80k a month afford?" },
-  { label: "Cost to buy", text: "Cost to buy a ₱7.6M condo in Pasig?" },
-  { label: "What do we have?", text: "How many listings do we have?" },
-  { label: "Monthly payment", text: "Monthly payment on ₱7.6M, 20% down, 7%, 20 years" },
-  { label: "Maceda refund", text: "Buyer paid ₱900K over 6 years and wants out. Maceda refund?" },
-  { label: "Foreign buyer", text: "Can a Japanese client buy a condo?" },
-  { label: "Commission", text: "Commission on ₱9.8M at 5%" },
+  "2BR condo for rent in BGC under 60k",
+  "Compare lenders for a ₱7.6M condo, 20% down, 20 years",
+  "How much can a buyer earning ₱80k a month afford?",
+  "Cost to buy a ₱7.6M condo in Pasig?",
+  "How many listings do we have?",
+  "Can a Japanese client buy a condo?",
 ];
 
 let n = 0;
 const mid = () => `m${Date.now()}${n++}`;
 
+/** Listings mentioned in a turn's tool results, for "which listing?" pickers. */
+function listingsIn(turn: ChatTurn): DeskContext["recent"] {
+  const out: DeskContext["recent"] = [];
+  const add = (l: { code?: string; name?: string; price?: number; transactionType?: string } | undefined) => {
+    if (l?.code && l.name && typeof l.price === "number") out.push({ code: l.code, name: l.name, price: l.price, lease: l.transactionType === "lease" });
+  };
+  for (const t of turn.toolTrace) {
+    const r = t.result as Record<string, unknown> | null;
+    if (!r || typeof r !== "object") continue;
+    if (Array.isArray(r.listings)) (r.listings as never[]).forEach(add);
+    if (Array.isArray(r.results)) (r.results as { listing?: never }[]).forEach((x) => add(x.listing));
+    if (t.name === "listings.get") add(r as never);
+  }
+  return out;
+}
+
 function Turn({ m, onSave, onAsk }: { m: Msg; onSave: (m: Msg) => void; onAsk: (text: string) => void }) {
   if (m.role === "user")
     return (
-      <div className="flex justify-end">
-        <p className="max-w-[85%] rounded-2xl rounded-br-sm bg-navy px-4 py-2 text-sm whitespace-pre-wrap text-cream">{m.content}</p>
+      <div className="ga-rise flex justify-end">
+        <p className="max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-navy to-panel px-4 py-2.5 text-sm whitespace-pre-wrap text-cream shadow-[0_8px_20px_-12px_rgb(14_25_47/0.6)]">{m.content}</p>
       </div>
     );
   if (m.role === "error")
     return (
-      <p role="alert" className="flex gap-2 rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">
+      <p role="alert" className="ga-rise flex gap-2 rounded-xl border border-bad/20 bg-bad-soft px-3 py-2 text-sm text-bad">
         <TriangleAlert size={16} className="mt-0.5 shrink-0" aria-hidden />
         {m.content}
       </p>
     );
   const t = m.turn;
   const chips = m.suggestions ?? t?.suggestions ?? [];
+  const engine = t?.model === "grid-query-engine";
   return (
-    <article className="card max-w-full p-4">
-      <Markdown text={(t?.suggestions?.length ? m.content.replace(/\n\n\*\*Next:\*\*[^\n]*/, "") : m.content) || "_(no reply text)_"} className="text-sm" />
+    <article className="ga-rise group relative max-w-full overflow-hidden rounded-2xl border border-line bg-white p-4 pl-5 shadow-[var(--shadow-card)]">
+      <span className="absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-gradient-to-b from-bronze via-gold to-transparent" aria-hidden />
+      <Markdown text={(chips.length ? m.content.replace(/\n\n\*\*Next:\*\*[^\n]*/, "") : m.content) || "_(no reply text)_"} className="text-sm" />
       {t && t.warnings.length > 0 && (
         <ul className="mt-3 space-y-1">
           {t.warnings.map((w, i) => (
@@ -63,7 +109,7 @@ function Turn({ m, onSave, onAsk }: { m: Msg; onSave: (m: Msg) => void; onAsk: (
         </ul>
       )}
       {t && t.toolTrace.length > 0 && (
-        <details className="mt-3 rounded-lg border border-line bg-sand/60 text-sm">
+        <details className="mt-3 rounded-xl border border-line bg-sand/60 text-sm">
           <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-medium text-ink-2">
             <Wrench size={13} aria-hidden /> Calculations used: {t.toolTrace.map((x) => x.name).join(", ")}
           </summary>
@@ -79,28 +125,41 @@ function Turn({ m, onSave, onAsk }: { m: Msg; onSave: (m: Msg) => void; onAsk: (
       )}
       {chips.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Suggested follow-ups">
-          {chips.map((s) => (
-            <button key={s} type="button" onClick={() => onAsk(s)} className="rounded-full border border-line bg-white px-2.5 py-1 text-xs hover:border-bronze hover:bg-bronze-soft">
-              {s}
+          {chips.map((s, i) => (
+            <button key={s} type="button" onClick={() => onAsk(s)} style={{ animationDelay: `${120 + i * 50}ms` }} className="ga-rise ga-chip">
+              <Sparkles size={11} aria-hidden className="text-bronze" /> {s}
             </button>
           ))}
         </div>
       )}
       {t && (
         <footer className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
-          <span>{t.model === "grid-query-engine" ? "Query Engine · no AI" : t.model}</span>
-          {t.model !== "grid-query-engine" && (
+          <span className="inline-flex items-center gap-1">
+            <span className={`size-1.5 rounded-full ${engine ? "bg-gold" : "bg-ok"}`} aria-hidden />
+            {engine ? "Query Engine · no AI" : t.model}
+          </span>
+          {!engine && (
             <span>
               {t.usage.inputTokens + t.usage.cachedInputTokens} in · {t.usage.outputTokens} out
             </span>
           )}
           <span data-testid="turn-cost">{t.estimatedCostPhp === null ? "cost n/a" : `≈ ${php(t.estimatedCostPhp)}`}</span>
-          <button type="button" onClick={() => onSave(m)} className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-sand">
+          <button type="button" onClick={() => onSave(m)} className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 opacity-70 transition-opacity group-hover:opacity-100 hover:bg-sand">
             <Save size={12} aria-hidden /> Save to Files
           </button>
         </footer>
       )}
     </article>
+  );
+}
+
+/** Animated "working" indicator. */
+function Thinking({ engine }: { engine: boolean }) {
+  return (
+    <div role="status" className="ga-rise flex items-center gap-3 rounded-2xl border border-line bg-white/70 px-4 py-3 text-sm">
+      <span className="ga-orb" aria-hidden />
+      <span className="ga-shimmer-text font-medium">{engine ? "Running GRID tools…" : "Thinking with GRID's calculators…"}</span>
+    </div>
   );
 }
 
@@ -112,36 +171,88 @@ function DealDesk({ grid }: { grid: GridSDK }) {
   const [sessions, setSessions] = useState<{ id: string; title: string; updatedAt: string }[]>([]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState(typeof grid.launchArgs.prompt === "string" ? grid.launchArgs.prompt.slice(0, 4000) : "");
-  const realAi = grid.ai.available;
   const [busy, setBusy] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [spent, setSpent] = useState<{ today: number; cap: number } | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const [docs, setDocs] = useState<DocSummary[]>([]);
   const [showDocs, setShowDocs] = useState(false);
   const [reading, setReading] = useState<{ name: string; label: string; pct?: number } | null>(null);
+  const [recentAsks, setRecentAsks] = useState<string[]>([]);
+  const [places, setPlaces] = useState<string[]>([]);
+  const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+  const sendRef = useRef<(t: string) => void>(() => {});
+
+  // -- conversation context for "/" pickers and predictions --
+  const ctx: DeskContext = useMemo(() => {
+    const seen = new Set<string>();
+    const recent: DeskContext["recent"] = [];
+    for (const m of [...msgs].reverse()) {
+      if (!m.turn) continue;
+      for (const l of listingsIn(m.turn)) {
+        if (seen.has(l.code) || recent.length >= 10) continue;
+        seen.add(l.code);
+        recent.push(l);
+      }
+    }
+    const last = [...msgs].reverse().find((m) => m.turn)?.turn;
+    return { recent, lastIntent: last?.intent ?? null };
+  }, [msgs]);
+
+  const menu = useCommandMenu(grid, ctx, {
+    send: (t) => sendRef.current(t),
+    fill: (t) => {
+      setInput(t);
+      requestAnimationFrame(() => boxRef.current?.focus());
+    },
+  });
+
   const loadDocs = useCallback(() => grid.docs.list().then(setDocs).catch(() => {}), [grid]);
+  const loadSessions = useCallback(() => grid.ai.sessions().then(setSessions).catch(() => {}), [grid]);
+
   useEffect(() => {
     loadDocs();
-  }, [loadDocs]);
+    loadSessions();
+    grid.kv
+      .get<string[]>("recent-asks")
+      .then((r) => setRecentAsks(Array.isArray(r) ? r : []))
+      .catch(() => {});
+    grid.listings
+      .facets()
+      .then((f) => setPlaces(f.byCity.slice(0, 40).map((c) => c.city)))
+      .catch(() => {});
+    grid.ai
+      .providers()
+      .then(async (list) => {
+        setProviders(list);
+        const saved = await grid.kv.get<string>("provider").catch(() => null);
+        const pick = list.find((p) => p.id === saved && p.configured) ?? list.find((p) => p.isDefault && p.configured) ?? list.find((p) => p.configured);
+        setProvider(pick?.id ?? "");
+      })
+      .catch((e) => setMsgs([{ id: mid(), role: "error", content: errText(e) }]));
+  }, [grid, loadDocs, loadSessions]);
+
+  useEffect(() => {
+    // Braces matter: newer browsers return a Promise from scrollIntoView, which React would treat as a cleanup.
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [msgs, busy]);
 
   const upload = async (file: File) => {
     setReading({ name: file.name, label: "Opening" });
     try {
-      const input = await extractDocument(file, (label, pct) => setReading({ name: file.name, label, pct }));
-      setReading({ name: file.name, label: "Indexing" });
-      const doc = await grid.docs.add(input);
+      const doc = await grid.docs.add(await extractDocument(file, (label, pct) => setReading({ name: file.name, label, pct })));
       await loadDocs();
       const facts = [doc.facts.amounts.length && `${doc.facts.amounts.length} amount${doc.facts.amounts.length === 1 ? "" : "s"}`, doc.facts.dates.length && `${doc.facts.dates.length} date${doc.facts.dates.length === 1 ? "" : "s"}`].filter(Boolean).join(", ");
       const ocr = doc.ocrConfidence !== null ? ` Read with OCR (confidence ${doc.ocrConfidence}%)${doc.ocrConfidence < 70 ? ": check figures against the original" : ""}.` : "";
+      const short = doc.name.replace(/\.[a-z0-9]+$/i, "");
       setMsgs((m) => [
         ...m,
         {
           id: mid(),
           role: "assistant",
           content: `📄 Added **${doc.name}**: ${doc.pages} page${doc.pages === 1 ? "" : "s"}${facts ? `, found ${facts}` : ""}.${ocr}`,
-          suggestions: [`summarize ${doc.name.replace(/\.[a-z0-9]+$/i, "")}`, "what are the deadlines in the document?", "what does the document say about payment?"],
+          suggestions: [`summarize ${short}`, `key dates and amounts in ${short}`, `In ${short}, what does it say about payment?`],
         },
       ]);
     } catch (e) {
@@ -158,31 +269,18 @@ function DealDesk({ grid }: { grid: GridSDK }) {
     loadDocs();
   };
 
-  const loadSessions = useCallback(() => grid.ai.sessions().then(setSessions).catch(() => {}), [grid]);
-
-  useEffect(() => {
-    grid.ai
-      .providers()
-      .then(async (list) => {
-        setProviders(list);
-        const saved = await grid.kv.get<string>("provider").catch(() => null);
-        const pick = list.find((p) => p.id === saved && p.configured) ?? list.find((p) => p.isDefault && p.configured) ?? list.find((p) => p.configured);
-        setProvider(pick?.id ?? "");
-      })
-      .catch((e) => setMsgs([{ id: mid(), role: "error", content: errText(e) }]));
-    loadSessions();
-  }, [grid, loadSessions]);
-
-  useEffect(() => {
-    // Braces matter: newer browsers return a Promise from scrollIntoView, which React would treat as a cleanup.
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [msgs, busy]);
-
   const send = async (text: string) => {
     const message = text.trim();
     if (!message || busy) return;
+    if (message.startsWith("/")) {
+      menu.open();
+      return;
+    }
     setInput("");
     setMsgs((m) => [...m, { id: mid(), role: "user", content: message }]);
+    const asks = [message, ...recentAsks.filter((a) => a.toLowerCase() !== message.toLowerCase())].slice(0, 40);
+    setRecentAsks(asks);
+    grid.kv.set("recent-asks", asks).catch(() => {});
     setBusy(true);
     try {
       const turn = await grid.ai.chat(message, { sessionId, provider: provider || undefined, tier });
@@ -194,8 +292,10 @@ function DealDesk({ grid }: { grid: GridSDK }) {
       setMsgs((m) => [...m, { id: mid(), role: "error", content: errText(e) }]);
     } finally {
       setBusy(false);
+      requestAnimationFrame(() => boxRef.current?.focus());
     }
   };
+  sendRef.current = send;
 
   const openSession = async (id: string) => {
     try {
@@ -219,6 +319,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
     setSessionId(undefined);
     setMsgs([]);
     setShowHistory(false);
+    menu.close();
   };
 
   const save = async (m: Msg) => {
@@ -235,11 +336,83 @@ function DealDesk({ grid }: { grid: GridSDK }) {
     }
   };
 
+  // -- composer --
+  const ghost = menu.active ? "" : predict(input, { asks: recentAsks, places, docs: docs.map((d) => d.name.replace(/\.[a-z0-9]+$/i, "")) });
+
+  const startCommand = (cmd: string) => {
+    menu.open();
+    const o: Opt = { id: cmd, label: cmd };
+    setInput(menu.choose(o));
+    requestAnimationFrame(() => boxRef.current?.focus());
+  };
+  const pick = (o: Opt) => {
+    setInput(menu.choose(o));
+    requestAnimationFrame(() => boxRef.current?.focus());
+  };
+
+  /** Back one step; from the first step, back to the command list (with "/" in the box). */
+  const goBack = () => {
+    if (menu.crumbs.length === 1) setInput("/");
+    menu.back();
+    boxRef.current?.focus();
+  };
+
+  const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (menu.active) {
+      const count = menu.options.length;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        menu.setHi((menu.hi + 1) % Math.max(1, count));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        menu.setHi((menu.hi - 1 + count) % Math.max(1, count));
+      } else if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+        e.preventDefault();
+        const hi = menu.hi;
+        menu.whenReady().then(({ list, fresh }) => {
+          const o = list[fresh ? 0 : hi];
+          if (o) pick(o);
+        });
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        menu.close();
+        setInput("");
+      } else if (e.key === "Backspace" && input === "" && menu.crumbs.length) {
+        e.preventDefault();
+        goBack();
+      }
+      return;
+    }
+    if ((e.key === "Tab" || (e.key === "ArrowRight" && e.currentTarget.selectionStart === input.length)) && ghost) {
+      e.preventDefault();
+      setInput(input + ghost);
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send(input);
+    }
+  };
+
+  /** Predicted next moves: the last answer's follow-ups, plus commands that fit what is on screen. */
+  const upNext = useMemo(() => {
+    const last = [...msgs].reverse().find((m) => m.role === "assistant");
+    const chips: { label: string; run: () => void; cmd?: boolean }[] = (last?.suggestions ?? last?.turn?.suggestions ?? []).slice(0, 3).map((s) => ({ label: s, run: () => send(s) }));
+    const i = ctx.lastIntent;
+    if (ctx.recent.length && i !== "listing_details") chips.push({ label: "/listings", cmd: true, run: () => startCommand("listings") });
+    if (i === "find_listings" || i === "listing_details") chips.push({ label: "/buyer matching", cmd: true, run: () => startCommand("match") });
+    if (i === "mortgage_compare" || i === "affordability") chips.push({ label: "/lenders", cmd: true, run: () => startCommand("lenders") });
+    if (docs.length && !i?.startsWith("doc")) chips.push({ label: "/documents", cmd: true, run: () => startCommand("docs") });
+    return chips.slice(0, 5);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgs, ctx, docs.length]);
+
   const chosen = providers.find((p) => p.id === provider);
+  const engine = provider === "demo";
 
   return (
-    <div className="app-shell">
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-white px-3 py-2">
+    <div className="app-shell ga-desk">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-white/80 px-3 py-2 backdrop-blur">
         <button type="button" className="btn btn-ghost min-h-8 px-2.5 text-xs" onClick={newChat}>
           <Plus size={14} aria-hidden /> New
         </button>
@@ -260,7 +433,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
               setProvider(e.target.value);
               grid.kv.set("provider", e.target.value).catch(() => {});
             }}
-            className="field h-8 w-auto py-0 text-xs"
+            className="field h-8 w-auto rounded-full py-0 text-xs"
           >
             {providers.map((p) => (
               <option key={p.id} value={p.id} disabled={!p.configured}>
@@ -269,12 +442,12 @@ function DealDesk({ grid }: { grid: GridSDK }) {
               </option>
             ))}
           </select>
-          {provider !== "demo" && (
+          {!engine && (
             <>
               <label htmlFor="tier" className="sr-only">
                 Model tier
               </label>
-              <select id="tier" value={tier} onChange={(e) => setTier(e.target.value as "balanced" | "budget")} className="field h-8 w-auto py-0 text-xs">
+              <select id="tier" value={tier} onChange={(e) => setTier(e.target.value as "balanced" | "budget")} className="field h-8 w-auto rounded-full py-0 text-xs">
                 <option value="balanced">Balanced{chosen ? ` · ${chosen.models.balanced}` : ""}</option>
                 <option value="budget">Budget{chosen ? ` · ${chosen.models.budget}` : ""}</option>
               </select>
@@ -285,7 +458,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
 
       <div className="relative flex min-h-0 flex-1">
         {showHistory && (
-          <aside aria-label="Past conversations" className="absolute inset-y-0 left-0 z-10 w-72 overflow-auto border-r border-line bg-white shadow-lg">
+          <aside aria-label="Past conversations" className="ga-slide-l absolute inset-y-0 left-0 z-10 w-72 overflow-auto border-r border-line bg-white shadow-lg">
             {sessions.length === 0 && <p className="p-4 text-sm text-muted">No saved conversations yet.</p>}
             <ul>
               {sessions.map((s) => (
@@ -302,9 +475,8 @@ function DealDesk({ grid }: { grid: GridSDK }) {
             </ul>
           </aside>
         )}
-
         {showDocs && (
-          <aside aria-label="Documents" className="absolute inset-y-0 right-0 z-10 w-80 overflow-auto border-l border-line bg-white shadow-lg">
+          <aside aria-label="Documents" className="ga-slide-r absolute inset-y-0 right-0 z-10 w-80 overflow-auto border-l border-line bg-white shadow-lg">
             <div className="flex items-center justify-between border-b border-line px-3 py-2">
               <p className="text-sm font-semibold">Documents</p>
               <button type="button" aria-label="Close documents" onClick={() => setShowDocs(false)} className="grid size-7 place-items-center rounded hover:bg-sand">
@@ -337,39 +509,53 @@ function DealDesk({ grid }: { grid: GridSDK }) {
             </ul>
           </aside>
         )}
-        <div className="min-h-0 flex-1 overflow-auto px-4 py-4" aria-live="polite">
+
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-5" aria-live="polite">
           {msgs.length === 0 ? (
-            <div className="mx-auto max-w-xl pt-6 text-center">
-              <p className="eyebrow">{provider === "demo" ? "Deal Desk · Query Engine (no AI)" : "Deal Desk AI"}</p>
-              <h1 className="mt-2 text-3xl">What are we working on?</h1>
-              <p className="mt-2 text-sm text-muted">
-                Answers use GRID&apos;s fixed calculators, rulebook and inventory, never guessed figures. Every reply shows the calculations used and its cost.
+            <div className="mx-auto max-w-2xl pt-4 text-center">
+              <p className="eyebrow ga-rise">{engine ? "Deal Desk · Query Engine (no AI)" : "Deal Desk AI"}</p>
+              <h1 className="ga-rise mt-2 text-3xl sm:text-4xl" style={{ animationDelay: "60ms" }}>
+                What are we <span className="ga-gradient-text">working on</span>?
+              </h1>
+              <p className="ga-rise mx-auto mt-2 max-w-lg text-sm text-muted" style={{ animationDelay: "120ms" }}>
+                Type <kbd className="ga-kbd">/</kbd> to pick a feature and I&apos;ll ask the rest, or just ask in English, Filipino or Taglish. Answers come from GRID&apos;s calculators, rulebook, listings and your documents.
               </p>
-              <div className="mt-5 flex flex-wrap justify-center gap-2">
-                {QUICK.map((q) => (
-                  <button key={q.label} type="button" onClick={() => send(q.text)} className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-3 py-1.5 text-xs hover:border-bronze hover:bg-bronze-soft">
-                    {q.label} <ChevronRight size={12} aria-hidden />
+              <div className="mt-6 grid grid-cols-2 gap-2.5 text-left sm:grid-cols-3">
+                {STARTERS.map((s, i) => {
+                  const Icon = s.icon;
+                  return (
+                    <button
+                      key={s.cmd}
+                      type="button"
+                      data-starter={s.cmd}
+                      onClick={() => startCommand(s.cmd)}
+                      style={{ animationDelay: `${160 + i * 50}ms` }}
+                      className={`ga-rise spotlight group relative overflow-hidden rounded-2xl text-left border border-line bg-gradient-to-br ${s.tone} to-white p-3.5 transition-all duration-300 hover:-translate-y-0.5 hover:border-bronze/50 hover:shadow-[0_14px_30px_-18px_rgb(14_25_47/0.45)]`}
+                    >
+                      <span className="grid size-9 place-items-center rounded-xl border border-white/80 bg-white/80 text-navy shadow-sm transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
+                        <Icon size={17} aria-hidden />
+                      </span>
+                      <span className="mt-2.5 block text-sm font-semibold text-ink">{s.label}</span>
+                      <span className="block text-xs text-muted">{s.hint}</span>
+                      <ChevronRight size={14} className="absolute top-3.5 right-3 text-muted opacity-0 transition-all duration-300 group-hover:translate-x-0.5 group-hover:opacity-100" aria-hidden />
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="ga-rise mt-6 text-[11px] font-medium tracking-wide text-muted uppercase" style={{ animationDelay: "480ms" }}>
+                Or try
+              </p>
+              <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                {QUICK.map((q, i) => (
+                  <button key={q} type="button" onClick={() => send(q)} style={{ animationDelay: `${520 + i * 40}ms` }} className="ga-rise ga-chip">
+                    {q}
                   </button>
                 ))}
               </div>
-              {!realAi && (
-                <div data-testid="smart-mode" className="mt-5 rounded-xl border border-info/30 bg-info-soft p-4 text-left text-xs text-info">
-                  <p className="font-semibold">Query Engine: works without an AI key</p>
-                  <p className="mt-1">
-                    Ask in English, Filipino or Taglish. It searches listings, scores buyer matches, compares Pag-IBIG and bank loans, runs the calculators, and reads documents you upload (📎), including scans and photos. It follows up on what you asked before, but it is rule-based: it can&apos;t write free-form answers like an AI.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" className="btn btn-ghost min-h-8 px-3 text-xs" onClick={() => grid.ui.openApp("property-finder")}>
-                      Open Property Finder
-                    </button>
-                    <button type="button" className="btn btn-ghost min-h-8 px-3 text-xs" onClick={() => grid.ui.openApp("calculators")}>
-                      Open Calculators
-                    </button>
-                    <button type="button" className="btn btn-ghost min-h-8 px-3 text-xs" onClick={() => grid.ui.openApp("settings", { tab: "ai" })}>
-                      How to add an AI key
-                    </button>
-                  </div>
-                </div>
+              {engine && (
+                <p data-testid="smart-mode" className="ga-rise mx-auto mt-6 max-w-lg rounded-xl border border-info/20 bg-info-soft/70 px-3 py-2 text-left text-xs text-info" style={{ animationDelay: "700ms" }}>
+                  <strong>Query Engine: works without an AI key.</strong> It remembers the conversation (“how about 15 years?”, “the second one”), reads documents you upload with 📎 (including scans and photos), and only reports figures GRID&apos;s tools return.
+                </p>
               )}
             </div>
           ) : (
@@ -377,11 +563,7 @@ function DealDesk({ grid }: { grid: GridSDK }) {
               {msgs.map((m) => (
                 <Turn key={m.id} m={m} onSave={save} onAsk={send} />
               ))}
-              {busy && (
-                <p className="text-sm text-muted" role="status">
-                  Working… running the numbers.
-                </p>
-              )}
+              {busy && <Thinking engine={engine} />}
               <div ref={endRef} />
             </div>
           )}
@@ -389,60 +571,111 @@ function DealDesk({ grid }: { grid: GridSDK }) {
       </div>
 
       <form
-        className="border-t border-line bg-white p-3"
+        className="relative border-t border-line bg-gradient-to-b from-white/60 to-white px-3 pt-2 pb-3"
         onSubmit={(e) => {
           e.preventDefault();
           send(input);
         }}
       >
-        {reading && (
-          <p className="mx-auto mb-2 max-w-3xl text-xs text-muted" role="status" data-testid="reading">
-            Reading {reading.name}: {reading.label}
-            {reading.pct !== undefined ? ` ${Math.round(reading.pct * 100)}%` : "…"}
-          </p>
-        )}
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept={ACCEPT}
-            className="sr-only"
-            aria-label="Upload a document"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) upload(f);
-            }}
-          />
-          <button type="button" className="btn btn-ghost h-11 px-3" aria-label="Attach a document" title="Attach a PDF, Word file or photo" disabled={!!reading} onClick={() => fileRef.current?.click()}>
-            <Paperclip size={16} aria-hidden />
-          </button>
-          <label htmlFor="msg" className="sr-only">
-            Message
-          </label>
-          <textarea
-            id="msg"
-            rows={2}
-            maxLength={4000}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send(input);
-              }
-            }}
-            placeholder="Ask in English, Filipino or Taglish. Keep TINs, IDs and bank numbers out."
-            className="field min-h-11 resize-none"
-          />
-          <button type="submit" disabled={busy || !input.trim() || !provider} className="btn btn-dark h-11" aria-label="Send">
-            <Send size={16} aria-hidden />
-          </button>
+        <div className="relative mx-auto max-w-3xl">
+          {!menu.active && upNext.length > 0 && !input && !busy && (
+            <div className="mb-2 flex items-center gap-1.5 overflow-x-auto" role="group" aria-label="Up next">
+              <span className="shrink-0 text-[10px] font-semibold tracking-wider text-muted uppercase">Up next</span>
+              {upNext.map((c, i) => (
+                <button key={c.label} type="button" onClick={c.run} style={{ animationDelay: `${i * 40}ms` }} className={`ga-rise ga-chip shrink-0 ${c.cmd ? "font-mono" : ""}`}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {reading && (
+            <p className="mb-2 flex items-center gap-2 text-xs text-muted" role="status" data-testid="reading">
+              <span className="ga-orb ga-orb-sm" aria-hidden />
+              Reading {reading.name}: {reading.label}
+              {reading.pct !== undefined ? ` ${Math.round(reading.pct * 100)}%` : "…"}
+            </p>
+          )}
+          <CommandPanel menu={menu} onChoose={pick} onBack={goBack} />
+          <div className={`ga-glow rounded-2xl ${menu.active ? "ga-glow-on" : ""}`}>
+            <div className="relative rounded-[15px] bg-white">
+              <input
+                ref={fileRef}
+                type="file"
+                accept={ACCEPT}
+                className="sr-only"
+                aria-label="Upload a document"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) upload(f);
+                }}
+              />
+              <div className="relative">
+                {/* Ghost text: the predicted rest of the sentence, behind the transparent textarea. */}
+                <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden px-4 pt-3 pb-1 text-sm break-words whitespace-pre-wrap">
+                  <span className="invisible">{input}</span>
+                  <span className="text-muted/60" data-testid="ghost">
+                    {ghost}
+                  </span>
+                </div>
+                <label htmlFor="msg" className="sr-only">
+                  Message
+                </label>
+                <textarea
+                  id="msg"
+                  ref={boxRef}
+                  rows={2}
+                  maxLength={4000}
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    menu.onInput(e.target.value);
+                  }}
+                  onKeyDown={onKey}
+                  role="combobox"
+                  aria-controls="cmd-list"
+                  aria-expanded={menu.active}
+                  aria-autocomplete="list"
+                  placeholder={menu.active ? menu.placeholder : "Ask anything, or type / for commands"}
+                  className="relative block min-h-[52px] w-full resize-none bg-transparent px-4 pt-3 pb-1 text-sm text-ink placeholder:text-muted focus:outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-1 px-2 pb-2">
+                <button type="button" className="ga-icon-btn" aria-label="Attach a document" title="Attach a PDF, Word file or photo" disabled={!!reading} onClick={() => fileRef.current?.click()}>
+                  <Paperclip size={16} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  className={`ga-icon-btn ${menu.active ? "bg-navy text-gold hover:bg-navy" : ""}`}
+                  aria-label="Commands"
+                  title="Commands (type /)"
+                  onClick={() => {
+                    if (menu.active) {
+                      menu.close();
+                      setInput("");
+                    } else {
+                      setInput("/");
+                      menu.open();
+                    }
+                    boxRef.current?.focus();
+                  }}
+                >
+                  <Slash size={15} aria-hidden />
+                </button>
+                <span className="ml-1 hidden truncate text-[11px] text-muted sm:inline">
+                  {menu.active ? "↑↓ move · Enter pick · ⌫ back · Esc close" : ghost ? "Tab to accept the suggestion" : "/ for commands · Shift+Enter for a new line"}
+                </span>
+                <button type="submit" disabled={busy || !input.trim() || !provider || menu.active} className="ga-send ml-auto" aria-label="Send">
+                  <ArrowUp size={16} aria-hidden />
+                </button>
+              </div>
+            </div>
+          </div>
+          {spent && spent.cap > 0 && !engine && (
+            <p className="mt-1.5 text-[11px] text-muted">
+              AI used today: {php(spent.today)} of {php(spent.cap)}
+            </p>
+          )}
         </div>
-        {spent && spent.cap > 0 && provider !== "demo" && (
-          <p className="mx-auto mt-1.5 max-w-3xl text-[11px] text-muted">
-            AI used today: {php(spent.today)} of {php(spent.cap)}
-          </p>
-        )}
       </form>
     </div>
   );

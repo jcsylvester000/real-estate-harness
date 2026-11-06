@@ -13,7 +13,7 @@ test("Query Engine reads a PDF and a photo (OCR), summarizes, and answers from t
   // PDF with a text layer.
   await dd.getByLabel("Upload a document").setInputFiles(fixture("sample-lease.pdf"));
   await expect(dd.getByText(/Added \*?\*?sample-lease\.pdf|Added sample-lease\.pdf/)).toBeVisible({ timeout: 30_000 });
-  await dd.getByRole("button", { name: "summarize sample-lease" }).click();
+  await dd.getByRole("button", { name: "summarize sample-lease" }).first().click();
   await expect(dd.getByText(/75,000/).first()).toBeVisible({ timeout: 15_000 });
   await dd.getByLabel("Message").fill("what does the lease say about pets?");
   await dd.getByRole("button", { name: "Send" }).click();
@@ -37,7 +37,7 @@ test("Query Engine follows up: lender comparison, then a shorter term", async ({
   await dd.getByLabel("Message").fill("Compare lenders for a ₱7.6M condo, 20% down");
   await dd.getByRole("button", { name: "Send" }).click();
   await expect(dd.getByText("Pag-IBIG Fund").first()).toBeVisible({ timeout: 15_000 });
-  await dd.getByRole("button", { name: "how about 15 years" }).click();
+  await dd.getByRole("button", { name: "how about 15 years" }).first().click();
   await expect(dd.getByText(/15 years/).last()).toBeVisible({ timeout: 15_000 });
   await expect(dd.getByText("Query Engine · no AI").last()).toBeVisible();
 });

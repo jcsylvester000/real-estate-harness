@@ -77,6 +77,7 @@ export const METHODS = {
 
   // Documents for the Query Engine: text is extracted in the browser; only text reaches the server.
   "docs.list": m({ schema: none, run: (a) => docsSvc.listDocuments(a.user.id) }),
+  "docs.notes": m({ schema: none, run: async (a) => (await docsSvc.recentNotes(a.user.id, 30)).filter((n) => !/^\/Deals\/deal-desk-/.test(n.path)).map(({ path, name, updatedAt, content }) => ({ path, name, updatedAt, preview: content.slice(0, 140) })) }),
   "docs.get": m({ schema: z.object({ id: z.string().uuid(), withText: z.boolean().optional() }), run: (a, x) => docsSvc.getDocument(a.user.id, x.id, x.withText) }),
   "docs.search": m({ schema: z.object({ q: z.string().min(1).max(300), limit: z.number().int().min(1).max(20).optional() }), run: (a, x) => docsSvc.searchDocuments(a.user.id, x.q, { limit: x.limit }) }),
   "docs.add": m({ kind: "command", schema: docsSvc.docInput, run: (a, x) => docsSvc.addDocument(a.user.id, x) }),

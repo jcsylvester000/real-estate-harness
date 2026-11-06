@@ -72,6 +72,7 @@ export interface GridSDK {
   kv: { get<T = unknown>(key: string): Promise<T | null>; set(key: string, value: unknown): Promise<boolean>; del(key: string): Promise<boolean>; list(prefix?: string): Promise<string[]> };
   docs: {
     list(): Promise<DocSummary[]>;
+    notes(): Promise<{ path: string; name: string; updatedAt: string; preview: string }[]>;
     get(id: string, opts?: { withText?: boolean }): Promise<DocSummary & { text?: string }>;
     search(q: string, opts?: { limit?: number }): Promise<Passage[]>;
     add(input: DocInput): Promise<DocSummary>;

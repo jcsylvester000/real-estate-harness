@@ -58,7 +58,7 @@ export function routeMessage(text: string): Omit<ToolCall, "id"> | null {
   if (/\b(how many|what (do|does) (we|grid) have|inventory overview|overview|summary of (the )?(listings|inventory)|listings index)\b/.test(t)) {
     return { name: "get_listing_index", arguments: {} };
   }
-  const code = text.match(/\b(GRID[_-][A-Z0-9-]{3,}|DEMO-\d{3})\b/i)?.[1];
+  const code = text.match(/\b(?=[A-Z0-9_-]*\d)([A-Z]{2,10}[_-][A-Z0-9_-]{3,})\b/)?.[1];
   if (code) return { name: "get_listing", arguments: { code: code.toUpperCase() } };
   const parsed = parseInquiry(text);
   const f = parsed.filters;

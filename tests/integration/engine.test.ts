@@ -4,6 +4,8 @@ import { importGridCsv } from "@/lib/listings/import";
 import { createUser } from "@/lib/server/services/auth";
 import { chat } from "@/lib/server/services/ai";
 import { addDocument, listDocuments, searchDocuments } from "@/lib/server/services/documents";
+import { saveBuyer } from "@/lib/listings/buyers";
+import { buyerCriteria } from "@/lib/listings/match";
 import { write } from "@/lib/server/services/fs";
 import { freshDb } from "../helpers/db";
 import { freshListingsDb } from "../helpers/listings-db";
@@ -104,5 +106,44 @@ describe("Query Engine (no AI)", () => {
     expect((await ask("what can you do?")).reply).toMatch(/Upload a PDF/);
     expect((await ask("are you an AI?")).reply).toMatch(/not an AI/);
     expect((await ask("zzqx blorp")).reply).toMatch(/not sure|didn't catch/);
+  });
+});
+
+describe("sentences written by the / command menu", () => {
+  const tool = async (m: string, sid?: string) => (await ask(m, sid)).toolTrace[0];
+  it("search property", async () => {
+    expect(await tool("Find condo for rent in Taguig under ₱60k")).toMatchObject({ name: "listings.search", arguments: { kind: "condominium-unit", city: "Taguig", maxPrice: 60_000, transactionType: "lease" } });
+    expect((await tool("Find properties for sale"))?.name).toBe("listings.search");
+  });
+  it("buyer matching, new and saved", async () => {
+    expect((await tool("Match a buyer looking for condo for rent in Taguig under ₱40k to live in"))?.name).toBe("match.run");
+    await saveBuyer({ label: "BGC renter 40k", notes: "", criteria: buyerCriteria.parse({ transactionType: "lease", kinds: ["condominium-unit"], city: "Taguig", budgetMax: 40_000 }) });
+    const t = await tool("Matches for saved buyer BGC renter 40k");
+    expect(t).toMatchObject({ name: "match.run", arguments: { criteria: { city: "Taguig", budgetMax: 40_000 } } });
+  });
+  it("calculators and lenders", async () => {
+    expect(await tool("Compare lenders for TEST_0006, 20% down, 20 years")).toMatchObject({ name: "lenders.compare", arguments: { propertyPrice: 45_000_000, termYears: 20 } });
+    expect(await tool("Pag-IBIG Fund home loan for ₱3M, 10% down, 30 years")).toMatchObject({ name: "lenders.compare", arguments: { propertyPrice: 3_000_000, downPaymentPercent: 10, termYears: 30, lenderIds: ["pagibig"] } });
+    expect(await tool("Security Bank home loan for ₱7.6M, 20% down, 15 years")).toMatchObject({ arguments: { lenderIds: ["securitybank"], termYears: 15 } });
+    expect(await tool("Cost to buy TEST_0006 in Metro Manila")).toMatchObject({ name: "compute_acquisition_costs", arguments: { sellingPrice: 45_000_000, lguType: "city_or_metro_manila" } });
+    expect(await tool("Cost to buy ₱5M in the province")).toMatchObject({ arguments: { sellingPrice: 5_000_000, lguType: "province" } });
+    expect(await tool("Commission on ₱9.8M at 4%")).toMatchObject({ name: "compute_commission", arguments: { salePrice: 9_800_000, commissionRatePercent: 4 } });
+    expect(await tool("Buyer paid ₱900k over 6 years and wants out. Maceda refund?")).toMatchObject({ name: "compute_maceda_refund", arguments: { totalPaymentsMade: 900_000, yearsOfInstallmentsPaid: 6 } });
+    expect(await tool("Can a foreign buyer buy a condo?")).toMatchObject({ name: "check_foreign_ownership", arguments: { propertyType: "condominium" } });
+    expect(await tool("Can a foreigner lease land?")).toMatchObject({ arguments: { propertyType: "lease" } });
+    expect((await tool("How much can a buyer earning ₱80k a month afford?"))?.name).toBe("lenders.compare");
+  });
+  it("listings actions", async () => {
+    expect(await tool("Details on TEST_0002")).toMatchObject({ name: "listings.get", arguments: { code: "TEST_0002" } });
+    expect(await tool("Which buyers match TEST_0002?")).toMatchObject({ name: "match.forListing", arguments: { code: "TEST_0002" } });
+  });
+  it("notes: one note, and action items only", async () => {
+    await write(userId, { path: "/Documents/Call notes Reyes.md", content: "Spoke with Mr. Reyes about selling his lot in Batangas. He wants 12M net of taxes.\n\n- [ ] Send comparable listings\n- Follow up on the title copy", createParents: true });
+    const one = await ask("Summarize note Call notes Reyes");
+    expect(one.reply).toContain("Call notes Reyes");
+    expect(one.reply).not.toContain("Santos");
+    const todo = await ask("Action items in note Call notes Reyes");
+    expect(todo.reply).toContain("Send comparable listings");
+    expect(todo.reply).not.toMatch(/Spoke with/);
   });
 });

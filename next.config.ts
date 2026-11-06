@@ -35,6 +35,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Dev-only Next.js badge: top-right of the desktop, away from app windows' inputs (never shown in production).
+  devIndicators: { position: "top-right" },
   reactStrictMode: true,
   serverExternalPackages: ["@node-rs/argon2", "@electric-sql/pglite"],
   async headers() {

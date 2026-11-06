@@ -204,6 +204,8 @@
     /** Documents the Query Engine can read. Extract text in the browser first (PDF, DOCX, OCR); only text is sent. */
     docs: {
       list: c("docs.list"),
+      /** Text notes in Files (newest first): path, name, updatedAt, preview. */
+      notes: c("docs.notes"),
       get: function (id, opts) {
         return request("docs.get", { id: id, withText: !!(opts && opts.withText) });
       },

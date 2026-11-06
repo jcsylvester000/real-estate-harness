@@ -15,7 +15,7 @@ a browser desktop, windows, iframe apps and an app SDK. No Puter code is used (P
 
 | Built-in app | What it does |
 |---|---|
-| **Deal Desk AI** | Ask about costs, loans, listings, buyer matches and your documents. With an AI key it uses Claude, OpenAI-compatible models (OpenRouter) or Gemini. **Without a key it uses the Query Engine** (below). It shows the calculations used and the cost in pesos, and saves conversations. Upload PDFs, Word files or photos with 📎. |
+| **Deal Desk AI** | Type **/** to pick a feature (search property, buyer matching, calculator, listings, lenders, notes, documents) and answer short follow-ups by clicking; or just ask. It predicts the next step ("Up next" chips, suggested commands, ghost-text completion). Ask about costs, loans, listings, buyer matches and your documents. With an AI key it uses Claude, OpenAI-compatible models (OpenRouter) or Gemini. **Without a key it uses the Query Engine** (below). It shows the calculations used and the cost in pesos, and saves conversations. Upload PDFs, Word files or photos with 📎. |
 | **Buyer Matching** | Describe the buyer (kind, place, budget, bedrooms, size, purpose, features) and set how much each criterion matters (must have / important / nice to have / ignore). Every listing gets a **match score from 1 to 10** with a "why this score" breakdown. Save buyers; saved buyers are scored against every listing automatically (two-way). |
 | **Calculators** | **Home loan (lenders):** compare Pag-IBIG and 13 banks/in-house financing, or pick one lender. Rates come from a researched, editable table (**Lender rates** tab, with sources and as-of dates). Also taxes and fees, loan payment, commission, Maceda refund and foreign-buyer rules. No AI, no cost. |
 | **Property Finder** | Type what the client wants ("2BR condo for rent in BGC under 60k") and get ranked matches from the listings index. **No AI needed.** |
@@ -25,6 +25,8 @@ a browser desktop, windows, iframe apps and an app SDK. No Puter code is used (P
 
 - **Access (temporary):** a PIN pop-up unlocks the desktop for the shared `grid-team` account (`GRID_ACCESS_PIN`, default 4120). Five wrong PINs from one address lock it for 15 minutes. **Lock** in the taskbar ends the session. The PIN is in this public repository: set your own `GRID_ACCESS_PIN` before going live, and bring back named accounts before real client data goes in.
 - **Permissions (the Puter model):** each app declares permissions. Built-in apps get what they declare. A third-party app runs sandboxed (opaque origin, no cookies). The user must allow each permission once.
+- **Desktop:** drag icons anywhere. Right-click the desktop to choose **Snap icons to grid** (drops swap places) or **Free icon placement**, or **Tidy up icons**; the layout is saved per user.
+- **Look and motion:** spotlight cards, glowing input, shimmer buttons, animated windows and menus (inspired by 21st.dev components); all motion turns off when the system asks for reduced motion.
 - **Works without AI:** with no key, the taskbar shows "Query Engine (no AI)" and every app works fully.
 - **AI cost control:** the harness caps tool steps and spend per turn. A per-person daily allowance in pesos (`GRID_DAILY_AI_CAP_PHP`) applies on top. Every turn is metered in `usage_events` (Query Engine turns at ₱0).
 
@@ -70,6 +72,7 @@ npm run dev             # open http://localhost:3000 and enter the PIN
 
 `.env.local` holds the secrets and is never committed. See `.env.example` for every setting.
 With no AI key, Deal Desk runs the **Query Engine** (see Settings → AI setup).
+The small Next.js "N" badge only appears in `npm run dev`; it now sits at the top right of the desktop and is hidden inside app windows. Production has no badge.
 `npm run dev` and `npm run build` first copy the OCR and PDF reader files into `public/ocr` and `public/pdfjs` (about 16 MB, not committed).
 
 **AI through OpenRouter** (one key, hundreds of models): set the following in `.env.local`:
@@ -82,8 +85,8 @@ Any OpenRouter model with tool calling works, for example `anthropic/claude-haik
 
 | Command | What it does |
 |---|---|
-| `npm test` | 93 unit and integration tests (in-memory Postgres; no network) |
-| `npm run e2e` | 16 browser tests on a production build (`npm run build` first), including PDF and OCR uploads |
+| `npm test` | 100 unit and integration tests (in-memory Postgres; no network) |
+| `npm run e2e` | 19 browser tests on a production build (`npm run build` first), including PDF and OCR uploads |
 | `npm run projections:rebuild` | Rebuild the listings read models (CQRS) |
 | `npm run listings:import -- file.csv` | Import a GRID listings export |
 | `npm run lint` / `npm run typecheck` | Code checks |
